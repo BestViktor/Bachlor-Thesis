@@ -371,7 +371,10 @@ function WFAdaptorManifestation(adaptor) {
           }
         }
       },
-      'svg': self.adaptor.theme_dir + 'symbols/call.svg'
+      "innerLabel":true,
+      'svg': self.adaptor.theme_dir + 'symbols/call_first.svg',
+      'midsvg': self.adaptor.theme_dir + 'symbols/call_mid1.svg',
+      'endsvg': self.adaptor.theme_dir + 'symbols/call_end.svg'
     },//}}}
     'description': self.adaptor.theme_dir + 'rngs/call.rng',
     'permissible_children': function(node,mode) { //{{{
@@ -407,7 +410,11 @@ function WFAdaptorManifestation(adaptor) {
           return [];
         }
       },
-      'svg': self.adaptor.theme_dir + 'symbols/manipulate.svg'
+      "innerLabel":true,
+      'svg': self.adaptor.theme_dir + 'symbols/manipulate_first.svg',
+      'midsvg':self.adaptor.theme_dir + 'symbols/call_mid1.svg',
+      'endsvg':self.adaptor.theme_dir + 'symbols/call_end.svg',
+
     },//}}}
     'description': self.adaptor.theme_dir + 'rngs/manipulate.rng',
     'permissible_children': function(node,mode) { //{{{
@@ -925,7 +932,7 @@ function WFAdaptorManifestation(adaptor) {
         return 'horizontal';
       },
       'col_shift': function(node) {
-        return true;
+        return false;
       },
       'svg': self.adaptor.theme_dir + 'symbols/parallel.svg',
       'resolve_symbol': function(node) {
@@ -1336,7 +1343,9 @@ function WFAdaptorManifestation(adaptor) {
     'parent': 'call',
     'description': self.adaptor.theme_dir + 'rngs/callmanipulate.rng',
     'illustrator': {//{{{
-      'svg': self.adaptor.theme_dir + 'symbols/callmanipulate.svg'
+      'svg': self.adaptor.theme_dir + 'symbols/call_first.svg',
+      'midsvg': self.adaptor.theme_dir + 'symbols/call_mid1.svg',
+      'endsvg': self.adaptor.theme_dir + 'symbols/callmanipulate_end.svg'
     }//}}}
   }; /*}}}*/
   this.elements.callmanipulate_sensor = { /*{{{*/

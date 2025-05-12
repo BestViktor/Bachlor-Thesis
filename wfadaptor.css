@@ -221,8 +221,8 @@ svg .marked .cline {
 }
 
 svg .selected text.label {
-  color: var(--wfadaptor-selected);
-  fill: var(--wfadaptor-selected);
+  color: var(--wfadaptor-base);
+  fill: var(--wfadaptor-base);
 }
 svg .selected .cfill {
   fill: var(--wfadaptor-selected);

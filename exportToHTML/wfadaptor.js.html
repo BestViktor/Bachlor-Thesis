@@ -1,0 +1,1208 @@
+<html>
+<head>
+<title>wfadaptor.js</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #8c8c8c; font-style: italic;}
+.s1 { color: #080808;}
+.s2 { color: #8c8c8c; font-style: italic;}
+.s3 { color: #0033b3;}
+.s4 { color: #067d17;}
+.s5 { color: #1750eb;}
+.s6 { color: #0037a6;}
+.s7 { color: #264eff;}
+</style>
+</head>
+<body bgcolor="#ffffff">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#c0c0c0" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+wfadaptor.js</font>
+</center></td></tr></table>
+<pre><span class="s0">/* 
+  This file is part of cpee-layout. 
+ 
+  cpee-layout is free software: you can redistribute it and/or modify it under 
+  the terms of the GNU General Public License as published by the Free Software 
+  Foundation, either version 3 of the License, or (at your option) any later 
+  version. 
+ 
+  cpee-layout is distributed in the hope that it will be useful, but WITHOUT 
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS 
+  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more 
+  details. 
+ 
+  You should have received a copy of the GNU General Public License along with 
+  cpee-layout (file COPYING in the main directory). If not, see 
+  &lt;http://www.gnu.org/licenses/&gt;. 
+*/</span>
+
+<span class="s0">// TODO: changes in svg-script:</span>
+<span class="s0">// 1) drawing functions</span>
+<span class="s0">// 2) creation of svg-container (Bug: arrows on lines)</span>
+<span class="s0">// 3) after-function to insert using namespace of description</span>
+
+<span class="s0">// WfAdaptor:</span>
+<span class="s0">// Handles interaction between Illustartor and Description</span>
+<span class="s0">// e.g. Event fires to Adaptor to insert Element and Illustrator and Description do it</span>
+
+<span class="s0">/**</span>
+ <span class="s0">*</span>
+ <span class="s0">* </span><span class="s2">@param </span><span class="s0">{*} text</span>
+ <span class="s0">* </span><span class="s2">@param </span><span class="s0">{*} charWidthMap</span>
+ <span class="s0">* </span><span class="s2">@returns</span>
+ <span class="s0">*/</span>
+
+<span class="s3">function </span><span class="s1">updateClipPath(svgEl, newWidth, offsetX) {</span>
+    <span class="s3">const </span><span class="s1">newClipId = </span><span class="s4">`clip-</span><span class="s1">${Date.now()}</span><span class="s4">`</span><span class="s1">;</span>
+    <span class="s3">const </span><span class="s1">clipPath = svgEl.querySelector(</span><span class="s4">&quot;#myClip&quot;</span><span class="s1">);</span>
+    <span class="s3">const </span><span class="s1">clipRect = svgEl.querySelector(</span><span class="s4">&quot;#myClip rect&quot;</span><span class="s1">);</span>
+    <span class="s3">const </span><span class="s1">gElement = svgEl.querySelector(</span><span class="s4">&quot;g&quot;</span><span class="s1">);</span>
+    <span class="s3">if </span><span class="s1">(clipPath &amp;&amp; clipRect &amp;&amp; gElement) {</span>
+        <span class="s1">clipRect.setAttribute(</span><span class="s4">&quot;width&quot;</span><span class="s1">, newWidth + </span><span class="s5">2</span><span class="s1">);</span>
+        <span class="s1">clipRect.setAttribute(</span><span class="s4">&quot;x&quot;</span><span class="s1">, offsetX);</span>
+        <span class="s1">clipPath.setAttribute(</span><span class="s4">&quot;id&quot;</span><span class="s1">, newClipId);</span>
+        <span class="s1">gElement.setAttribute(</span><span class="s4">&quot;clip-path&quot;</span><span class="s1">, </span><span class="s4">`url(#</span><span class="s1">${newClipId}</span><span class="s4">)`</span><span class="s1">);</span>
+    <span class="s1">}</span>
+<span class="s1">}</span>
+
+<span class="s3">function </span><span class="s1">estimateTextWidth(</span>
+    <span class="s1">text,</span>
+    <span class="s1">charWidthMap = {</span>
+        <span class="s3">default</span><span class="s1">: </span><span class="s5">5</span><span class="s1">, </span><span class="s0">// 默认宽度 / Default width</span>
+        <span class="s1">uppercase: </span><span class="s5">8.5</span><span class="s1">, </span><span class="s0">// 大写字母宽度 / Width for uppercase letters</span>
+        <span class="s1">lowercase: </span><span class="s5">7</span><span class="s1">, </span><span class="s0">// 小写字母宽度 / Width for lowercase letters</span>
+        <span class="s1">digit: </span><span class="s5">6</span><span class="s1">, </span><span class="s0">// 数字宽度 / Width for digits</span>
+        <span class="s1">symbol: </span><span class="s5">6</span><span class="s1">, </span><span class="s0">// 特殊字符宽度 / Width for special characters</span>
+        <span class="s1">narrow: </span><span class="s5">3</span><span class="s1">, </span><span class="s0">// 窄字符宽度，如 i, I, 1 / Width for narrow characters, e.g., i, I, 1</span>
+    <span class="s1">}</span>
+<span class="s1">) {</span>
+    <span class="s3">if </span><span class="s1">(!text) </span><span class="s3">return </span><span class="s5">0</span><span class="s1">;</span>
+    <span class="s3">const </span><span class="s1">narrowChars = </span><span class="s3">new </span><span class="s1">Set([</span>
+        <span class="s4">&quot;i&quot;</span><span class="s1">, </span><span class="s4">&quot;I&quot;</span><span class="s1">, </span><span class="s4">&quot;l&quot;</span><span class="s1">, </span><span class="s4">&quot;f&quot;</span><span class="s1">, </span><span class="s4">&quot;t&quot;</span><span class="s1">, </span><span class="s4">&quot; &quot;</span><span class="s1">,</span>
+        <span class="s4">&quot;!&quot;</span><span class="s1">, </span><span class="s4">&quot;|&quot;</span><span class="s1">, </span><span class="s4">&quot;'&quot;</span><span class="s1">, </span><span class="s4">&quot;</span><span class="s6">\&quot;</span><span class="s4">&quot;</span><span class="s1">, </span><span class="s4">&quot;:&quot;</span><span class="s1">, </span><span class="s4">&quot;;&quot;</span><span class="s1">, </span><span class="s4">&quot;.&quot;</span><span class="s1">, </span><span class="s4">&quot;</span><span class="s6">\\</span><span class="s4">&quot;</span><span class="s1">, </span><span class="s4">&quot;/&quot;</span><span class="s1">, </span><span class="s4">&quot;(&quot;</span><span class="s1">, </span><span class="s4">&quot;)&quot;</span><span class="s1">, </span><span class="s4">&quot;[&quot;</span><span class="s1">, </span><span class="s4">&quot;]&quot;</span><span class="s1">, </span><span class="s4">&quot;{&quot;</span><span class="s1">, </span><span class="s4">&quot;}&quot;</span><span class="s1">]);</span>
+
+    <span class="s3">return </span><span class="s1">Array.from(text).reduce((width, char) =&gt; {</span>
+        <span class="s3">if </span><span class="s1">(narrowChars.has(char)) {</span>
+            <span class="s0">// 特殊处理窄字符 / Special handling for narrow characters</span>
+            <span class="s3">return </span><span class="s1">width + (charWidthMap.narrow || charWidthMap.default);</span>
+        <span class="s1">} </span><span class="s3">else if </span><span class="s1">(</span><span class="s7">/[A-Z]/</span><span class="s1">.test(char)) {</span>
+            <span class="s0">// 大写字母 / Uppercase letters</span>
+            <span class="s3">return </span><span class="s1">width + (charWidthMap.uppercase || charWidthMap.default);</span>
+        <span class="s1">} </span><span class="s3">else if </span><span class="s1">(</span><span class="s7">/[a-z]/</span><span class="s1">.test(char)) {</span>
+            <span class="s0">// 小写字母 /  Lowercase letters</span>
+            <span class="s3">return </span><span class="s1">width + (charWidthMap.lowercase || charWidthMap.default);</span>
+        <span class="s1">} </span><span class="s3">else if </span><span class="s1">(</span><span class="s7">/[0-9]/</span><span class="s1">.test(char)) {</span>
+            <span class="s0">// 数字/ Numbers</span>
+            <span class="s3">return </span><span class="s1">width + (charWidthMap.digit || charWidthMap.default);</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s0">// 特殊字符 / Special characters</span>
+            <span class="s3">return </span><span class="s1">width + (charWidthMap.symbol || charWidthMap.default);</span>
+        <span class="s1">}</span>
+    <span class="s1">}, </span><span class="s5">0</span><span class="s1">);</span>
+<span class="s1">}</span>
+
+<span class="s3">function </span><span class="s1">wrapText(textElement, text, maxWidth, lineHeight, fontSize, scaleFactor = </span><span class="s5">1</span><span class="s1">, newWidth) {</span>
+    <span class="s0">// 清空 textElement，避免重复内容 / Clear textElement to avoid duplicate content</span>
+    <span class="s3">while </span><span class="s1">(textElement.firstChild) {</span>
+        <span class="s1">textElement.removeChild(textElement.firstChild);</span>
+    <span class="s1">}</span>
+
+    <span class="s0">// 拆分文本 / Split the text into words</span>
+    <span class="s3">const </span><span class="s1">words = text.trim().split(</span><span class="s7">/\s+/</span><span class="s1">);</span>
+
+    <span class="s3">let </span><span class="s1">lines = [</span><span class="s4">&quot;&quot;</span><span class="s1">, </span><span class="s4">&quot;&quot;</span><span class="s1">]; </span><span class="s0">// 初始化两行 / Initialize two lines</span>
+    <span class="s3">let </span><span class="s1">currentLine = </span><span class="s5">0</span><span class="s1">; </span><span class="s0">// 0 表示第一行，1 表示第二行 / 0 for first line, 1 for second line</span>
+    <span class="s3">let </span><span class="s1">isTruncated = </span><span class="s3">false</span><span class="s1">; </span><span class="s0">// 标记是否需要省略号 / Flag to indicate if ellipsis is needed</span>
+    <span class="s3">let </span><span class="s1">firstLineFull = </span><span class="s3">false</span><span class="s1">; </span><span class="s0">// 标记第一行是否已满 / Flag to mark if the first line is full</span>
+
+    <span class="s0">// 如果文本只有一个单词，确保它居中 / If the text has only one word, center it</span>
+    <span class="s3">if </span><span class="s1">(words.length === </span><span class="s5">1</span><span class="s1">) {</span>
+        <span class="s3">let </span><span class="s1">tspan = document.createElementNS(</span><span class="s4">&quot;http://www.w3.org/2000/svg&quot;</span><span class="s1">, </span><span class="s4">&quot;tspan&quot;</span><span class="s1">);</span>
+        <span class="s3">let </span><span class="s1">textWidth = estimateTextWidth(text) * (fontSize / </span><span class="s5">10</span><span class="s1">) * scaleFactor;</span>
+        <span class="s1">tspan.setAttribute(</span><span class="s4">&quot;x&quot;</span><span class="s1">, </span><span class="s5">0</span><span class="s1">); </span><span class="s0">// 左对齐，从 (0,0) 开始 / Left-align, start from (0,0)</span>
+        <span class="s1">tspan.setAttribute(</span><span class="s4">&quot;y&quot;</span><span class="s1">, </span><span class="s5">6</span><span class="s1">);</span>
+        <span class="s1">tspan.textContent = text;</span>
+        <span class="s1">textElement.appendChild(tspan);</span>
+        <span class="s3">return </span><span class="s1">textElement;</span>
+    <span class="s1">}</span>
+
+    <span class="s0">// 逐词添加到行中 / Loop through each word and add to lines</span>
+    <span class="s1">words.forEach((word, index) =&gt; {</span>
+        <span class="s3">let </span><span class="s1">testLine = lines[currentLine] ? lines[currentLine] + </span><span class="s4">&quot; &quot; </span><span class="s1">+ word : word;</span>
+        <span class="s3">let </span><span class="s1">textWidth = estimateTextWidth(testLine) * (fontSize / </span><span class="s5">10</span><span class="s1">) * scaleFactor;</span>
+
+        <span class="s3">if </span><span class="s1">(currentLine === </span><span class="s5">1 </span><span class="s1">&amp;&amp; textWidth &gt; maxWidth) {</span>
+            <span class="s0">// 第二行超出，添加省略号 / Second line exceeds maxWidth, add ellipsis</span>
+            <span class="s1">lines[</span><span class="s5">1</span><span class="s1">] = lines[</span><span class="s5">1</span><span class="s1">].trim() + </span><span class="s4">&quot; ...&quot;</span><span class="s1">;</span>
+            <span class="s1">isTruncated = </span><span class="s3">true</span><span class="s1">;</span>
+            <span class="s3">return</span><span class="s1">;</span>
+        <span class="s1">}</span>
+
+        <span class="s3">if </span><span class="s1">(textWidth &gt; maxWidth) {</span>
+            <span class="s3">if </span><span class="s1">(currentLine === </span><span class="s5">0 </span><span class="s1">&amp;&amp; !firstLineFull) {</span>
+                <span class="s0">// 第一行满了，换到第二行 / First line full, move to second line</span>
+                <span class="s1">firstLineFull = </span><span class="s3">true</span><span class="s1">;</span>
+                <span class="s1">currentLine = </span><span class="s5">1</span><span class="s1">;</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                <span class="s0">// 第二行也超出，添加省略号 / Second line exceeds, add ellipsis</span>
+                <span class="s1">lines[</span><span class="s5">1</span><span class="s1">] = lines[</span><span class="s5">1</span><span class="s1">].trim() + </span><span class="s4">&quot; ...&quot;</span><span class="s1">;</span>
+                <span class="s1">isTruncated = </span><span class="s3">true</span><span class="s1">;</span>
+                <span class="s3">return</span><span class="s1">;</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+
+        <span class="s0">// 添加词到当前行 / Add word to current line</span>
+        <span class="s3">if </span><span class="s1">(firstLineFull &amp;&amp; currentLine === </span><span class="s5">1</span><span class="s1">) {</span>
+            <span class="s1">lines[currentLine] += (lines[currentLine] ? </span><span class="s4">&quot; &quot; </span><span class="s1">: </span><span class="s4">&quot;&quot;</span><span class="s1">) + word;</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">lines[currentLine] = testLine;</span>
+        <span class="s1">}</span>
+    <span class="s1">});</span>
+
+    <span class="s0">// 如果只有一行被使用，平均分成两行显示 / If only one line is used, split into two lines</span>
+    <span class="s3">if </span><span class="s1">(!lines[</span><span class="s5">1</span><span class="s1">] &amp;&amp; !isTruncated) {</span>
+        <span class="s3">let </span><span class="s1">splitIndex = Math.floor(words.length / </span><span class="s5">2</span><span class="s1">);</span>
+        <span class="s1">lines[</span><span class="s5">0</span><span class="s1">] = words.slice(</span><span class="s5">0</span><span class="s1">, splitIndex).join(</span><span class="s4">&quot; &quot;</span><span class="s1">);</span>
+        <span class="s1">lines[</span><span class="s5">1</span><span class="s1">] = words.slice(splitIndex).join(</span><span class="s4">&quot; &quot;</span><span class="s1">);</span>
+    <span class="s1">}</span>
+
+    <span class="s0">// 计算每一行的宽度 / Calculate width of each line</span>
+    <span class="s3">const </span><span class="s1">lineWidths = lines.map(line =&gt;</span>
+        <span class="s1">estimateTextWidth(line) * (fontSize / </span><span class="s5">10</span><span class="s1">) * scaleFactor</span>
+    <span class="s1">);</span>
+    <span class="s3">const </span><span class="s1">maxLineWidth = Math.max(...lineWidths); </span><span class="s0">// 最大行宽 / Maximum line width</span>
+
+    <span class="s0">// 每一行创建 &lt;tspan&gt; / Create &lt;tspan&gt; for each line</span>
+    <span class="s1">lines.forEach((lineText, index) =&gt; {</span>
+        <span class="s3">let </span><span class="s1">tspan = document.createElementNS(</span><span class="s4">&quot;http://www.w3.org/2000/svg&quot;</span><span class="s1">, </span><span class="s4">&quot;tspan&quot;</span><span class="s1">);</span>
+
+        <span class="s0">// 计算偏移，实现行内居中 / Calculate offset to horizontally center the line</span>
+        <span class="s3">const </span><span class="s1">currentLineWidth = lineWidths[index];</span>
+        <span class="s3">const </span><span class="s1">offsetX = (maxLineWidth - currentLineWidth) / </span><span class="s5">2</span><span class="s1">;</span>
+
+        <span class="s1">tspan.setAttribute(</span><span class="s4">&quot;x&quot;</span><span class="s1">, offsetX); </span><span class="s0">// 设置 x 坐标 / Set x to offsetX for centering</span>
+        <span class="s3">if </span><span class="s1">(index === </span><span class="s5">0</span><span class="s1">) {</span>
+            <span class="s1">tspan.setAttribute(</span><span class="s4">&quot;y&quot;</span><span class="s1">, </span><span class="s5">0</span><span class="s1">); </span><span class="s0">// 第一行设置 y / Set y for the first line</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">tspan.setAttribute(</span><span class="s4">&quot;dy&quot;</span><span class="s1">, lineHeight); </span><span class="s0">// 第二行下移 / Move second line downward</span>
+        <span class="s1">}</span>
+        <span class="s1">tspan.textContent = lineText.trim(); </span><span class="s0">// 设置文本内容 / Set the trimmed line text</span>
+        <span class="s1">textElement.appendChild(tspan); </span><span class="s0">// 添加到 SVG / Append to SVG text element</span>
+    <span class="s1">});</span>
+<span class="s1">}</span>
+<span class="s3">function </span><span class="s1">get_label_shift_col(sname, context) {</span>
+    <span class="s3">if </span><span class="s1">(illustrator.elements[sname] &amp;&amp; </span><span class="s3">typeof </span><span class="s1">illustrator.elements[sname].label === </span><span class="s4">'function'</span><span class="s1">) {</span>
+        <span class="s3">const </span><span class="s1">labelData = illustrator.elements[sname].label(context);</span>
+        <span class="s3">if </span><span class="s1">(labelData &amp;&amp; labelData[</span><span class="s5">0</span><span class="s1">] &amp;&amp; labelData[</span><span class="s5">0</span><span class="s1">].value) {</span>
+            <span class="s3">const </span><span class="s1">labelText = labelData[</span><span class="s5">0</span><span class="s1">].value;</span>
+            <span class="s3">const </span><span class="s1">labelLength = labelText.length;</span>
+            <span class="s3">return </span><span class="s1">Math.floor(labelLength / </span><span class="s5">6</span><span class="s1">);</span>
+        <span class="s1">}</span>
+    <span class="s1">}</span>
+    <span class="s3">return </span><span class="s5">0</span><span class="s1">;</span>
+<span class="s1">}</span>
+
+
+<span class="s3">function </span><span class="s1">WfAdaptor(theme_base, doit) { </span><span class="s0">// Controller {{{</span>
+
+    <span class="s0">// public variables {{{</span>
+    <span class="s3">this</span><span class="s1">.illustrator;</span>
+    <span class="s3">this</span><span class="s1">.description;</span>
+    <span class="s3">this</span><span class="s1">.elements = {};</span>
+    <span class="s3">this</span><span class="s1">.theme_base = theme_base;</span>
+    <span class="s3">this</span><span class="s1">.theme_dir = theme_base.replace(</span><span class="s7">/theme.js/</span><span class="s1">, </span><span class="s4">''</span><span class="s1">);</span>
+    <span class="s0">// }}}</span>
+
+    <span class="s0">// private variables {{{</span>
+    <span class="s3">var </span><span class="s1">illustrator;</span>
+    <span class="s3">var </span><span class="s1">description;</span>
+    <span class="s3">var </span><span class="s1">self = </span><span class="s3">this</span><span class="s1">;</span>
+    <span class="s0">// }}}</span>
+
+    <span class="s0">// helper funtions</span>
+    <span class="s3">this</span><span class="s1">.set_description = </span><span class="s3">function </span><span class="s1">(desc, auto_update) { </span><span class="s0">// public {{{</span>
+        <span class="s3">this</span><span class="s1">.description.set_description(desc, auto_update);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+
+    <span class="s3">this</span><span class="s1">.get_description = </span><span class="s3">function </span><span class="s1">() { </span><span class="s0">// public {{{</span>
+        <span class="s3">return </span><span class="s1">description.get_description();</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.notify = </span><span class="s3">function </span><span class="s1">() { </span><span class="s0">// public {{{</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.draw_labels = </span><span class="s3">function </span><span class="s1">(max, labels, height_shift, striped) { </span><span class="s0">// public {{{</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.set_svg_container = </span><span class="s3">function </span><span class="s1">(container) { </span><span class="s0">// {{{</span>
+        <span class="s1">illustrator.set_svg_container(container); </span><span class="s0">// TODO: shadowing the container element</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.set_label_container = </span><span class="s3">function </span><span class="s1">(container) { </span><span class="s0">// {{{</span>
+        <span class="s1">illustrator.set_label_container(container);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+
+    <span class="s0">// initialize</span>
+    <span class="s3">this</span><span class="s1">.illustrator = illustrator = </span><span class="s3">new </span><span class="s1">WfIllustrator(</span><span class="s3">this</span><span class="s1">);</span>
+    <span class="s3">this</span><span class="s1">.description = description = </span><span class="s3">new </span><span class="s1">WfDescription(</span><span class="s3">this</span><span class="s1">, </span><span class="s3">this</span><span class="s1">.illustrator);</span>
+
+    <span class="s3">this</span><span class="s1">.update = </span><span class="s3">function </span><span class="s1">(doit) {</span>
+        <span class="s1">doit(self);</span>
+    <span class="s1">};</span>
+
+    <span class="s1">$.getScript(theme_base, </span><span class="s3">function </span><span class="s1">() {</span>
+        <span class="s1">manifestation = </span><span class="s3">new </span><span class="s1">WFAdaptorManifestation(self);</span>
+        <span class="s1">illustrator.compact = manifestation.compact == </span><span class="s3">true </span><span class="s1">? </span><span class="s3">true </span><span class="s1">: </span><span class="s3">false</span><span class="s1">;</span>
+        <span class="s1">illustrator.striped = manifestation.striped == </span><span class="s3">true </span><span class="s1">? </span><span class="s3">true </span><span class="s1">: </span><span class="s3">false</span><span class="s1">;</span>
+        <span class="s1">description.source = manifestation.source;</span>
+        <span class="s3">var </span><span class="s1">deferreds = [];</span>
+        <span class="s0">// copy parent stuff</span>
+        <span class="s3">for </span><span class="s1">(element </span><span class="s3">in </span><span class="s1">manifestation.elements) {</span>
+            <span class="s3">if </span><span class="s1">(manifestation.elements[element].parent) {</span>
+                <span class="s3">if </span><span class="s1">(!manifestation.elements[element].description) {</span>
+                    <span class="s1">manifestation.elements[element].description = manifestation.elements[manifestation.elements[element].parent].description;</span>
+                <span class="s1">}</span>
+                <span class="s3">if </span><span class="s1">(!manifestation.elements[element].adaptor) {</span>
+                    <span class="s1">manifestation.elements[element].adaptor = manifestation.elements[manifestation.elements[element].parent].adaptor;</span>
+                <span class="s1">}</span>
+                <span class="s3">var </span><span class="s1">ill = manifestation.elements[manifestation.elements[element].parent].illustrator;</span>
+                <span class="s3">for </span><span class="s1">(</span><span class="s3">var </span><span class="s1">key </span><span class="s3">in </span><span class="s1">ill) {</span>
+                    <span class="s3">if </span><span class="s1">(manifestation.elements[element].illustrator[key] == undefined) {</span>
+                        <span class="s1">manifestation.elements[element].illustrator[key] = ill[key];</span>
+                    <span class="s1">}</span>
+                <span class="s1">}</span>
+                <span class="s3">if </span><span class="s1">(manifestation.elements[element].type == undefined) {</span>
+                    <span class="s1">manifestation.elements[element].type = manifestation.elements[manifestation.elements[element].parent].type;</span>
+                <span class="s1">}</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s0">// doit</span>
+        <span class="s3">for </span><span class="s1">(element </span><span class="s3">in </span><span class="s1">manifestation.resources) {</span>
+            <span class="s1">deferreds.push(</span>
+                <span class="s1">$.ajax({</span>
+                    <span class="s1">type: </span><span class="s4">&quot;GET&quot;</span><span class="s1">,</span>
+                    <span class="s1">dataType: </span><span class="s4">&quot;xml&quot;</span><span class="s1">,</span>
+                    <span class="s1">url: manifestation.resources[element],</span>
+                    <span class="s1">context: element,</span>
+                    <span class="s1">success: </span><span class="s3">function </span><span class="s1">(res) {</span>
+                        <span class="s1">manifestation.resources[</span><span class="s3">this</span><span class="s1">] = $(res.documentElement);</span>
+                    <span class="s1">}</span>
+                <span class="s1">})</span>
+            <span class="s1">);</span>
+        <span class="s1">}</span>
+        <span class="s3">for </span><span class="s1">(element </span><span class="s3">in </span><span class="s1">manifestation.elements) {</span>
+            <span class="s3">if </span><span class="s1">(manifestation.elements[element].illustrator) {</span>
+                <span class="s3">var </span><span class="s1">types = [</span><span class="s4">&quot;svg&quot;</span><span class="s1">, </span><span class="s4">&quot;midsvg&quot;</span><span class="s1">, </span><span class="s4">&quot;endsvg&quot;</span><span class="s1">];</span>
+                <span class="s3">for </span><span class="s1">(</span><span class="s3">var </span><span class="s1">i = </span><span class="s5">0</span><span class="s1">; i &lt; types.length; i++) {</span>
+                    <span class="s3">var </span><span class="s1">type = types[i];</span>
+                    <span class="s3">if </span><span class="s1">(manifestation.elements[element].illustrator[type]) {</span>
+                        <span class="s1">deferreds.push(</span>
+                            <span class="s1">$.ajax({</span>
+                                <span class="s1">type: </span><span class="s4">&quot;GET&quot;</span><span class="s1">,</span>
+                                <span class="s1">dataType: </span><span class="s4">&quot;xml&quot;</span><span class="s1">,</span>
+                                <span class="s1">url: manifestation.elements[element].illustrator[type],</span>
+                                <span class="s1">context: {element: element, type: type},</span>
+                                <span class="s1">success: </span><span class="s3">function </span><span class="s1">(res) {</span>
+                                    <span class="s1">manifestation.elements[</span><span class="s3">this</span><span class="s1">.element].illustrator[</span><span class="s3">this</span><span class="s1">.type] = $(res.documentElement);</span>
+                                <span class="s1">}</span>
+                            <span class="s1">})</span>
+                        <span class="s1">);</span>
+                    <span class="s1">}</span>
+                <span class="s1">}</span>
+                <span class="s1">illustrator.elements[element] = manifestation.elements[element].illustrator;</span>
+                <span class="s1">illustrator.elements[element].type = manifestation.elements[element].type || </span><span class="s4">'abstract'</span><span class="s1">;</span>
+            <span class="s1">}</span>
+            <span class="s3">if </span><span class="s1">(manifestation.elements[element].description) {</span>
+                <span class="s3">if </span><span class="s1">(</span><span class="s3">typeof </span><span class="s1">manifestation.elements[element].description === </span><span class="s4">'string'</span><span class="s1">) {</span>
+                    <span class="s1">manifestation.elements[element].description = [manifestation.elements[element].description];</span>
+                <span class="s1">}</span>
+                <span class="s3">if </span><span class="s1">($.isArray(manifestation.elements[element].description)) {</span>
+                    <span class="s3">for </span><span class="s1">(</span><span class="s3">const </span><span class="s1">[ind, val] of Object.entries(manifestation.elements[element].description)) {</span>
+                        <span class="s1">deferreds.push(</span>
+                            <span class="s1">$.ajax({</span>
+                                <span class="s1">type: </span><span class="s4">&quot;GET&quot;</span><span class="s1">,</span>
+                                <span class="s1">dataType: </span><span class="s4">&quot;xml&quot;</span><span class="s1">,</span>
+                                <span class="s1">url: val,</span>
+                                <span class="s1">context: element,</span>
+                                <span class="s1">success: </span><span class="s3">function </span><span class="s1">(res) {</span>
+                                    <span class="s1">manifestation.elements[</span><span class="s3">this</span><span class="s1">].description = $(res.documentElement);</span>
+                                    <span class="s1">description.elements[</span><span class="s3">this</span><span class="s1">] = manifestation.elements[</span><span class="s3">this</span><span class="s1">].description;</span>
+                                <span class="s1">}</span>
+                            <span class="s1">})</span>
+                        <span class="s1">);</span>
+                    <span class="s1">}</span>
+                    <span class="s1">;</span>
+                <span class="s1">}</span>
+            <span class="s1">}</span>
+            <span class="s3">if </span><span class="s1">(manifestation.elements[element].adaptor) {</span>
+                <span class="s1">self.elements[element] = manifestation.elements[element].adaptor;</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s1">$.when.apply($, deferreds).then(</span><span class="s3">function </span><span class="s1">(x) {</span>
+            <span class="s1">doit(self);</span>
+        <span class="s1">});</span>
+    <span class="s1">});</span>
+<span class="s1">} </span><span class="s0">// }}}</span>
+
+<span class="s0">// WfIllustrator:</span>
+<span class="s0">// Is in charge of displaying the Graph. It is further able insert and remove elements with given ID's from the illsutration.</span>
+<span class="s3">function </span><span class="s1">WfIllustrator(wf_adaptor) { </span><span class="s0">// View  {{{</span>
+    <span class="s0">// Variable {{{</span>
+    <span class="s0">// public</span>
+    <span class="s3">this</span><span class="s1">.moveOffset = </span><span class="s5">0</span><span class="s1">;</span>
+    <span class="s3">this</span><span class="s1">.height = </span><span class="s5">40</span><span class="s1">;</span>
+    <span class="s3">this</span><span class="s1">.width = </span><span class="s5">40</span><span class="s1">;</span>
+    <span class="s3">this</span><span class="s1">.height_shift = </span><span class="s3">this</span><span class="s1">.height * </span><span class="s5">0.26</span><span class="s1">;</span>
+    <span class="s3">this</span><span class="s1">.width_shift = </span><span class="s3">this</span><span class="s1">.width * </span><span class="s5">0.39</span><span class="s1">;</span>
+    <span class="s3">this</span><span class="s1">.elements = {}; </span><span class="s0">// the svgs</span>
+    <span class="s3">this</span><span class="s1">.svg = {};</span>
+    <span class="s3">this</span><span class="s1">.draw = {};</span>
+    <span class="s3">this</span><span class="s1">.compact = </span><span class="s3">true</span><span class="s1">;</span>
+    <span class="s3">this</span><span class="s1">.striped = </span><span class="s3">true</span><span class="s1">;</span>
+    <span class="s0">// private</span>
+    <span class="s3">var </span><span class="s1">self = </span><span class="s3">this</span><span class="s1">;</span>
+    <span class="s3">var </span><span class="s1">adaptor = </span><span class="s3">null</span><span class="s1">;</span>
+    <span class="s0">// }}}</span>
+    <span class="s0">// Generic Functions {{{</span>
+    <span class="s3">this</span><span class="s1">.set_label_container = </span><span class="s3">function </span><span class="s1">(con) { </span><span class="s0">// {{{</span>
+        <span class="s1">self.svg.label_container = con;</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.set_svg_container = </span><span class="s3">function </span><span class="s1">(con) { </span><span class="s0">// {{{</span>
+        <span class="s1">self.svg.container = con;</span>
+        <span class="s1">self.svg.container.append($X(</span><span class="s4">'&lt;defs xmlns=&quot;http://www.w3.org/2000/svg&quot;&gt;' </span><span class="s1">+</span>
+            <span class="s4">'  &lt;marker id=&quot;arrow&quot; viewBox=&quot;0 0 10 10&quot; refX=&quot;33&quot; refY=&quot;5&quot; orient=&quot;auto&quot; markerUnits=&quot;strokeWidth&quot; markerWidth=&quot;4.5&quot; makerHeight=&quot;4.5&quot;&gt;' </span><span class="s1">+</span>
+            <span class="s4">'    &lt;path d=&quot;m 2 2 l 6 3 l -6 3 z&quot;/&gt;' </span><span class="s1">+</span>
+            <span class="s4">'  &lt;/marker&gt;' </span><span class="s1">+</span>
+            <span class="s4">'&lt;/defs&gt;'</span><span class="s1">));</span>
+        <span class="s1">self.svg.defs = {};</span>
+        <span class="s1">self.svg.defs[</span><span class="s4">'unknown'</span><span class="s1">] = $X(</span><span class="s4">'&lt;g xmlns=&quot;http://www.w3.org/2000/svg&quot; class=&quot;unknown&quot;&gt;' </span><span class="s1">+</span>
+            <span class="s4">'&lt;circle cx=&quot;15&quot; cy=&quot;15&quot; r=&quot;14&quot; class=&quot;unkown&quot;/&gt;' </span><span class="s1">+</span>
+            <span class="s4">'&lt;text transform=&quot;translate(15,20)&quot; class=&quot;normal&quot;&gt;?&lt;/text&gt;' </span><span class="s1">+</span>
+            <span class="s4">'&lt;/g&gt;'</span><span class="s1">);</span>
+        <span class="s3">for </span><span class="s1">(element </span><span class="s3">in </span><span class="s1">self.elements) {</span>
+            <span class="s3">if </span><span class="s1">(self.elements[element].svg) {</span>
+                <span class="s3">var </span><span class="s1">sym = $X(</span><span class="s4">'&lt;g xmlns=&quot;http://www.w3.org/2000/svg&quot;/&gt;'</span><span class="s1">).append(self.elements[element].svg.clone().children()); </span><span class="s0">// append all children to symbol</span>
+                <span class="s1">$.each(self.elements[element].svg.attr(</span><span class="s4">'class'</span><span class="s1">).split(</span><span class="s7">/\s+/</span><span class="s1">), </span><span class="s3">function </span><span class="s1">(index, item) {</span>
+                    <span class="s1">sym.addClass(item);</span>
+                <span class="s1">}); </span><span class="s0">// copy all classes from the root node</span>
+                <span class="s1">self.svg.defs[element] = sym;</span>
+            <span class="s1">}</span>
+            <span class="s3">if </span><span class="s1">(self.elements[element].midsvg) {</span>
+                <span class="s3">var </span><span class="s1">sym = $X(</span><span class="s4">'&lt;g xmlns=&quot;http://www.w3.org/2000/svg&quot;/&gt;'</span><span class="s1">).append(self.elements[element].midsvg.clone().children()); </span><span class="s0">// append all children to symbol</span>
+                <span class="s1">$.each(self.elements[element].svg.attr(</span><span class="s4">'class'</span><span class="s1">).split(</span><span class="s7">/\s+/</span><span class="s1">), </span><span class="s3">function </span><span class="s1">(index, item) {</span>
+                    <span class="s1">sym.addClass(item);</span>
+                <span class="s1">}); </span><span class="s0">// copy all classes from the root node</span>
+                <span class="s1">self.svg.defs[element].midsvg = sym;</span>
+            <span class="s1">}</span>
+            <span class="s3">if </span><span class="s1">(self.elements[element].endsvg) {</span>
+                <span class="s3">var </span><span class="s1">sym = $X(</span><span class="s4">'&lt;g xmlns=&quot;http://www.w3.org/2000/svg&quot;/&gt;'</span><span class="s1">).append(self.elements[element].endsvg.clone().children()); </span><span class="s0">// append all children to symbol</span>
+                <span class="s1">$.each(self.elements[element].svg.attr(</span><span class="s4">'class'</span><span class="s1">).split(</span><span class="s7">/\s+/</span><span class="s1">), </span><span class="s3">function </span><span class="s1">(index, item) {</span>
+                    <span class="s1">sym.addClass(item);</span>
+                <span class="s1">}); </span><span class="s0">// copy all classes from the root node</span>
+                <span class="s1">self.svg.defs[element].endsvg = sym;</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">clear = </span><span class="s3">this</span><span class="s1">.clear = </span><span class="s3">function </span><span class="s1">() { </span><span class="s0">// {{{</span>
+        <span class="s1">$(</span><span class="s4">'&gt; :not(defs)'</span><span class="s1">, self.svg.container).each(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s1">$(</span><span class="s3">this</span><span class="s1">).remove()</span>
+        <span class="s1">});</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.set_svg = </span><span class="s3">function </span><span class="s1">(graph) { </span><span class="s0">// {{{</span>
+
+        <span class="s3">if </span><span class="s1">(graph.max.row &lt; </span><span class="s5">1</span><span class="s1">) graph.max.row = </span><span class="s5">1</span><span class="s1">;</span>
+        <span class="s3">if </span><span class="s1">(graph.max.col &lt; </span><span class="s5">1</span><span class="s1">) graph.max.col = </span><span class="s5">1</span><span class="s1">;</span>
+        <span class="s1">self.svg.container.attr(</span><span class="s4">'height'</span><span class="s1">, (graph.max.row) * self.height + self.height_shift);</span>
+        <span class="s1">self.svg.container.attr(</span><span class="s4">'width'</span><span class="s1">, (graph.max.col + </span><span class="s5">0.55</span><span class="s1">) * self.width);</span>
+        <span class="s1">self.svg.container.attr(</span><span class="s4">'style'</span><span class="s1">, </span><span class="s4">'overflow:visible'</span><span class="s1">);</span>
+        <span class="s1">self.svg.container.append(graph.svg);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.get_node_by_svg_id = </span><span class="s3">function </span><span class="s1">(svg_id) { </span><span class="s0">// {{{</span>
+        <span class="s3">return </span><span class="s1">$(</span><span class="s4">'[element-id = </span><span class="s6">\'</span><span class="s4">' </span><span class="s1">+ svg_id + </span><span class="s4">'</span><span class="s6">\'</span><span class="s4">] g.activities'</span><span class="s1">, self.svg.container);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.get_label_by_svg_id = </span><span class="s3">function </span><span class="s1">(svg_id) { </span><span class="s0">// {{{</span>
+        <span class="s3">return </span><span class="s1">$(</span><span class="s4">'[element-id = </span><span class="s6">\'</span><span class="s4">' </span><span class="s1">+ svg_id + </span><span class="s4">'</span><span class="s6">\'</span><span class="s4">]'</span><span class="s1">, self.svg.label_container);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.get_elements = </span><span class="s3">function </span><span class="s1">() { </span><span class="s0">// {{{</span>
+        <span class="s3">return </span><span class="s1">$(</span><span class="s4">'g.element'</span><span class="s1">, self.svg.container);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.get_labels = </span><span class="s3">function </span><span class="s1">() { </span><span class="s0">// {{{</span>
+        <span class="s3">return </span><span class="s1">$(</span><span class="s4">'[element-id]'</span><span class="s1">, self.svg.label_container);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s0">// }}}</span>
+    <span class="s0">// Helper Functions {{{</span>
+    <span class="s3">var </span><span class="s1">get_y = </span><span class="s3">this</span><span class="s1">.draw.get_y = </span><span class="s3">function </span><span class="s1">(row) { </span><span class="s0">// {{{</span>
+        <span class="s3">return </span><span class="s1">{y: row * self.height - self.height, height_shift: self.height_shift};</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+
+    <span class="s3">var </span><span class="s1">draw_stripe = </span><span class="s3">this</span><span class="s1">.draw.draw_stripe = </span><span class="s3">function </span><span class="s1">(row, maxcol) { </span><span class="s0">// {{{</span>
+        <span class="s3">if </span><span class="s1">(maxcol &lt; </span><span class="s5">1</span><span class="s1">) maxcol = </span><span class="s5">1</span><span class="s1">;</span>
+        <span class="s3">var </span><span class="s1">g = $X(</span><span class="s4">'&lt;rect element-row=&quot;' </span><span class="s1">+ row + </span><span class="s4">'&quot; class=&quot;stripe ' </span><span class="s1">+ (row % </span><span class="s5">2 </span><span class="s1">== </span><span class="s5">0 </span><span class="s1">? </span><span class="s4">'even' </span><span class="s1">: </span><span class="s4">'odd'</span><span class="s1">) + </span><span class="s4">'&quot; x=&quot;0&quot; y=&quot;' </span><span class="s1">+ String(row * self.height + self.height_shift / </span><span class="s5">2</span><span class="s1">) + </span><span class="s4">'&quot; width=&quot;' </span><span class="s1">+ (self.width * maxcol + self.width - self.width_shift) + </span><span class="s4">'&quot; height=&quot;' </span><span class="s1">+ (self.height) + </span><span class="s4">'&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;&gt;&lt;/rect&gt;'</span><span class="s1">);</span>
+        <span class="s1">self.svg.container.prepend(g);</span>
+        <span class="s3">return </span><span class="s1">g;</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+
+    <span class="s3">var </span><span class="s1">draw_label = </span><span class="s3">this</span><span class="s1">.draw.draw_label = </span><span class="s3">function </span><span class="s1">(tname, id, label, row, col, group) { </span><span class="s0">// {{{</span>
+        <span class="s3">var </span><span class="s1">g = $X(</span><span class="s4">'&lt;text class=&quot;label&quot; transform=&quot;translate(' </span><span class="s1">+ String(col * self.width - self.width_shift) + </span><span class="s4">',' </span><span class="s1">+ String(row * self.height + </span><span class="s5">20 </span><span class="s1">- (self.height - self.height_shift)) + </span><span class="s4">')&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;&gt;&lt;/text&gt;'</span><span class="s1">);</span>
+        <span class="s3">var </span><span class="s1">spli = $(label.split(</span><span class="s7">/\n/</span><span class="s1">));</span>
+        <span class="s1">spli.each(</span><span class="s3">function </span><span class="s1">(k, v) {</span>
+            <span class="s3">var </span><span class="s1">tspan = $X(</span><span class="s4">'&lt;tspan x=&quot;0&quot; dy=&quot;' </span><span class="s1">+ (spli.length &gt; </span><span class="s5">1 </span><span class="s1">? </span><span class="s4">'-7' </span><span class="s1">: </span><span class="s4">'0'</span><span class="s1">) + </span><span class="s4">'&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;&gt;&lt;/tspan&gt;'</span><span class="s1">);</span>
+            <span class="s3">if </span><span class="s1">(k == </span><span class="s5">0</span><span class="s1">) {</span>
+                <span class="s1">tspan.text(v);</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                <span class="s1">tspan.text(v);</span>
+                <span class="s1">tspan.attr(</span><span class="s4">'dy'</span><span class="s1">, </span><span class="s4">'15'</span><span class="s1">);</span>
+                <span class="s1">tspan.attr(</span><span class="s4">'dx'</span><span class="s1">, </span><span class="s4">'15'</span><span class="s1">);</span>
+            <span class="s1">}</span>
+            <span class="s1">g.append(tspan);</span>
+        <span class="s1">});</span>
+        <span class="s3">if </span><span class="s1">(group) {</span>
+            <span class="s1">group.find(</span><span class="s4">'g.element[element-id=' </span><span class="s1">+ id + </span><span class="s4">']'</span><span class="s1">).append(g);</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">self.svg.container.append(g);</span>
+        <span class="s1">}</span>
+        <span class="s3">return </span><span class="s1">g;</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">draw_symbol = </span><span class="s3">this</span><span class="s1">.draw.draw_symbol = </span><span class="s3">function </span><span class="s1">(sname, id, title, row, col, group, addition) { </span><span class="s0">// {{{</span>
+        <span class="s3">if </span><span class="s1">(self.elements[sname] == undefined || self.elements[sname].svg == undefined) sname = </span><span class="s4">'unknown'</span><span class="s1">;</span>
+        <span class="s3">if </span><span class="s1">(addition) {</span>
+            <span class="s3">var </span><span class="s1">g = $X(</span><span class="s4">'&lt;g class=&quot;element&quot; element-type=&quot;' </span><span class="s1">+ sname + </span><span class="s4">'&quot; element-id=&quot;' </span><span class="s1">+ id + </span><span class="s4">'&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;g transform=&quot;translate(' </span><span class="s1">+ String(col * self.width - self.width_shift) + </span><span class="s4">',' </span><span class="s1">+ String(row * self.height - (self.height - self.height_shift)) + </span><span class="s4">')&quot;&gt;&lt;/g&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;/g&gt;'</span><span class="s1">);</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s3">var </span><span class="s1">g = $X(</span><span class="s4">'&lt;g class=&quot;element&quot; element-type=&quot;' </span><span class="s1">+ sname + </span><span class="s4">'&quot; element-id=&quot;' </span><span class="s1">+ id + </span><span class="s4">'&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;g transform=&quot;translate(' </span><span class="s1">+ String(col * self.width - self.width_shift) + </span><span class="s4">',' </span><span class="s1">+ String(row * self.height - (self.height - self.height_shift)) + </span><span class="s4">')&quot;&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;text class=&quot;super&quot; transform=&quot;translate(30,8.4)&quot;&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;tspan class=&quot;active&quot;&gt;0&lt;/tspan&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;tspan class=&quot;colon&quot;&gt;,&lt;/tspan&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;tspan class=&quot;vote&quot;&gt;0&lt;/tspan&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;/text&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;/g&gt;' </span><span class="s1">+</span>
+                <span class="s4">'&lt;/g&gt;'</span><span class="s1">);</span>
+        <span class="s1">}</span>
+        <span class="s3">var </span><span class="s1">offset = self.moveOffset;</span>
+        <span class="s3">var </span><span class="s1">sym = self.svg.defs[sname].clone();</span>
+        <span class="s3">var </span><span class="s1">tit = $X(</span><span class="s4">'&lt;title xmlns=&quot;http://www.w3.org/2000/svg&quot;&gt;&lt;/title&gt;'</span><span class="s1">);</span>
+        <span class="s1">tit.text(title);</span>
+        <span class="s1">sym.prepend(tit);</span>
+        <span class="s1">sym.attr(</span><span class="s4">'class'</span><span class="s1">, </span><span class="s4">'activities'</span><span class="s1">);</span>
+        <span class="s3">if </span><span class="s1">(self.elements[sname].label &amp;&amp; title) {</span>
+            <span class="s3">let </span><span class="s1">point;</span>
+            <span class="s3">let </span><span class="s1">path = sym[</span><span class="s5">0</span><span class="s1">].querySelector(</span><span class="s4">&quot;g .hfill.rfill.cline.stand&quot;</span><span class="s1">);</span>
+            <span class="s3">if </span><span class="s1">(path) {</span>
+                <span class="s3">let </span><span class="s1">length = path.getTotalLength();</span>
+                <span class="s1">point = path.getPointAtLength(length);</span>
+            <span class="s1">}</span>
+            <span class="s3">var </span><span class="s1">text = $X(</span><span class="s4">'&lt;text class=&quot;label stand&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot; transform=&quot;translate(32,13) &quot; &gt;&lt;/text&gt;'</span><span class="s1">);</span>
+            <span class="s3">var </span><span class="s1">width = estimateTextWidth(title) + </span><span class="s5">35</span>
+            <span class="s3">var </span><span class="s1">renderLabel = title</span>
+            <span class="s1">text.text(renderLabel)</span>
+            <span class="s1">sym.prepend(text)</span>
+            <span class="s1">g.attr(</span><span class="s4">&quot;transform&quot;</span><span class="s1">, </span><span class="s4">`translate(</span><span class="s1">${offset}</span><span class="s4">,0)`</span><span class="s1">);</span>
+            <span class="s3">if </span><span class="s1">(self.elements[sname].innerLabel) {</span>
+                <span class="s3">let </span><span class="s1">newWidth = width - point.x;</span>
+                <span class="s1">wrapText(text.get(</span><span class="s5">0</span><span class="s1">), renderLabel, </span><span class="s5">80</span><span class="s1">, </span><span class="s5">14</span><span class="s1">, </span><span class="s5">10</span><span class="s1">, </span><span class="s5">1</span><span class="s1">, newWidth);</span>
+                <span class="s0">/* if (!$(group[0]).attr('element-id')) { 
+                     sym.attr(&quot;transform&quot;, `translate(20,0)`); 
+                 }*/</span>
+                <span class="s3">if </span><span class="s1">(self.elements[sname].midsvg) {</span>
+                    <span class="s3">let </span><span class="s1">svgEl = self.elements[sname].midsvg.clone();</span>
+                    <span class="s1">updateClipPath(svgEl[</span><span class="s5">0</span><span class="s1">], newWidth, point.x);</span>
+                    <span class="s1">svgEl = svgEl.children().clone();</span>
+                    <span class="s1">sym.prepend(svgEl);</span>
+                <span class="s1">}</span>
+
+                <span class="s3">if </span><span class="s1">(self.elements[sname].endsvg) {</span>
+                    <span class="s3">let </span><span class="s1">endsvg = self.elements[sname].endsvg.children().clone();</span>
+                    <span class="s1">endsvg.attr(</span><span class="s4">&quot;transform&quot;</span><span class="s1">, </span><span class="s4">`translate(</span><span class="s1">${width}</span><span class="s4">, 0)`</span><span class="s1">);</span>
+                    <span class="s1">sym.prepend(endsvg);</span>
+                <span class="s1">}</span>
+
+                <span class="s1">g.attr(</span><span class="s4">&quot;transform&quot;</span><span class="s1">, </span><span class="s4">`translate(</span><span class="s1">${offset - (width / </span><span class="s5">2</span><span class="s1">) + </span><span class="s5">12</span><span class="s1">}</span><span class="s4">,0)`</span><span class="s1">);</span>
+            <span class="s1">}</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s3">if </span><span class="s1">(!addition || (addition &amp;&amp; sname === </span><span class="s4">'end'</span><span class="s1">)) {</span>
+                <span class="s1">g.attr(</span><span class="s4">&quot;transform&quot;</span><span class="s1">, </span><span class="s4">`translate(</span><span class="s1">${offset}</span><span class="s4">,0)`</span><span class="s1">);</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s1">$(g[</span><span class="s5">0</span><span class="s1">].childNodes[</span><span class="s5">0</span><span class="s1">]).append(sym);</span>
+
+        <span class="s0">// Binding events for symbol</span>
+        <span class="s1">bind_event(g, sname, </span><span class="s3">true</span><span class="s1">);</span>
+
+        <span class="s3">if </span><span class="s1">(group) {</span>
+            <span class="s1">group.append(g);</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">self.svg.container.children(</span><span class="s4">'g:first'</span><span class="s1">).append(g);</span>
+        <span class="s1">}</span>
+
+        <span class="s3">return </span><span class="s1">g;</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">bind_event = </span><span class="s3">this</span><span class="s1">.draw.bind_event = </span><span class="s3">function </span><span class="s1">(sym, tname, context) { </span><span class="s0">//{{{</span>
+        <span class="s3">for </span><span class="s1">(event_name </span><span class="s3">in </span><span class="s1">adaptor.elements[tname]) {</span>
+            <span class="s1">sym.bind(event_name, {</span><span class="s4">'function_call'</span><span class="s1">: adaptor.elements[tname][event_name]}, </span><span class="s3">function </span><span class="s1">(e) {</span>
+                <span class="s1">e.data.function_call($(</span><span class="s3">this</span><span class="s1">).attr(</span><span class="s4">'element-id'</span><span class="s1">), e)</span>
+            <span class="s1">});</span>
+            <span class="s3">if </span><span class="s1">(event_name == </span><span class="s4">'mousedown'</span><span class="s1">) sym.bind(</span><span class="s4">'contextmenu'</span><span class="s1">, </span><span class="s3">false</span><span class="s1">);</span>
+        <span class="s1">}</span>
+    <span class="s1">} </span><span class="s0">//}}}</span>
+    <span class="s3">var </span><span class="s1">draw_border = </span><span class="s3">this</span><span class="s1">.draw.draw_border = </span><span class="s3">function </span><span class="s1">(id, p1, p2, group) { </span><span class="s0">// {{{</span>
+        <span class="s3">let </span><span class="s1">offset = self.moveOffset;</span>
+        <span class="s1">group.prepend($X(</span><span class="s4">'&lt;rect element-id=&quot;' </span><span class="s1">+ id + </span><span class="s4">'&quot; x=&quot;' </span><span class="s1">+ ((p1.col - </span><span class="s5">0.50</span><span class="s1">) * self.width + offset) + </span><span class="s4">'&quot; ' </span><span class="s1">+</span>
+            <span class="s4">'y=&quot;' </span><span class="s1">+ (p1.row - </span><span class="s5">0.80</span><span class="s1">) * self.height + </span><span class="s4">'&quot; ' </span><span class="s1">+</span>
+            <span class="s4">'width=&quot;' </span><span class="s1">+ (((p2.col + </span><span class="s5">1.00</span><span class="s1">) - p1.col) * self.width + offset + </span><span class="s5">30</span><span class="s1">) + </span><span class="s4">'&quot; ' </span><span class="s1">+</span>
+            <span class="s4">'height=&quot;' </span><span class="s1">+ ((p2.row + </span><span class="s5">1.00</span><span class="s1">) - p1.row) * self.height + </span><span class="s4">'&quot; ' </span><span class="s1">+</span>
+            <span class="s4">'class=&quot;block&quot; rx=&quot;15&quot; ry=&quot;15&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;/&gt;'</span><span class="s1">));</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">draw_tile = </span><span class="s3">this</span><span class="s1">.draw.draw_tile = </span><span class="s3">function </span><span class="s1">(id, p1, p2, group) { </span><span class="s0">// {{{</span>
+        <span class="s3">let </span><span class="s1">offset = self.moveOffset;</span>
+        <span class="s1">group.prepend($X(</span><span class="s4">'&lt;rect element-id=&quot;' </span><span class="s1">+ id + </span><span class="s4">'&quot; x=&quot;' </span><span class="s1">+ (((p1.col - </span><span class="s5">1</span><span class="s1">) * self.width + </span><span class="s5">1.3 </span><span class="s1">* self.width_shift) + offset) + </span><span class="s4">'&quot; ' </span><span class="s1">+</span>
+            <span class="s4">'y=&quot;' </span><span class="s1">+ ((p1.row - </span><span class="s5">1</span><span class="s1">) * self.height + self.height_shift / </span><span class="s5">2</span><span class="s1">) + </span><span class="s4">'&quot; ' </span><span class="s1">+</span>
+            <span class="s4">'width=&quot;' </span><span class="s1">+ (((p2.col + </span><span class="s5">1</span><span class="s1">) - p1.col) * self.width + offset) + </span><span class="s4">'&quot; ' </span><span class="s1">+</span>
+            <span class="s4">'height=&quot;' </span><span class="s1">+ ((p2.row + </span><span class="s5">1</span><span class="s1">) - p1.row) * self.height + </span><span class="s4">'&quot; ' </span><span class="s1">+</span>
+            <span class="s4">'class=&quot;tile&quot; rx=&quot;15&quot; ry=&quot;15&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;/&gt;'</span><span class="s1">));</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">draw_connection = </span><span class="s3">this</span><span class="s1">.draw.draw_connection = </span><span class="s3">function </span><span class="s1">(group, start, end, max_line, num_lines, arrow) { </span><span class="s0">// {{{</span>
+        <span class="s3">let </span><span class="s1">offset = self.moveOffset</span>
+        <span class="s3">if </span><span class="s1">(((end[</span><span class="s4">'row'</span><span class="s1">] - start[</span><span class="s4">'row'</span><span class="s1">]) == </span><span class="s5">0</span><span class="s1">) &amp;&amp; ((end[</span><span class="s4">'col'</span><span class="s1">] - start[</span><span class="s4">'col'</span><span class="s1">]) == </span><span class="s5">0</span><span class="s1">)) </span><span class="s3">return</span><span class="s1">;</span>
+        <span class="s3">var </span><span class="s1">line;</span>
+        <span class="s3">if </span><span class="s1">(arrow)</span>
+            <span class="s1">line = $X(</span><span class="s4">'&lt;path xmlns=&quot;http://www.w3.org/2000/svg&quot; class=&quot;ourline&quot; marker-end=&quot;url(#arrow)&quot;/&gt;'</span><span class="s1">);</span>
+        <span class="s3">else</span>
+            <span class="s1">line = $X(</span><span class="s4">'&lt;path xmlns=&quot;http://www.w3.org/2000/svg&quot; class=&quot;ourline&quot;/&gt;'</span><span class="s1">);</span>
+        <span class="s3">if </span><span class="s1">(end[</span><span class="s4">'row'</span><span class="s1">] - start[</span><span class="s4">'row'</span><span class="s1">] == </span><span class="s5">0 </span><span class="s1">|| end[</span><span class="s4">'col'</span><span class="s1">] - start[</span><span class="s4">'col'</span><span class="s1">] == </span><span class="s5">0</span><span class="s1">) { </span><span class="s0">// straight line</span>
+            <span class="s1">line.attr(</span><span class="s4">&quot;d&quot;</span><span class="s1">, </span><span class="s4">&quot;M &quot; </span><span class="s1">+ String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(start[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">14</span><span class="s1">)</span>
+            <span class="s1">);</span>
+        <span class="s1">} </span><span class="s3">else if </span><span class="s1">(end[</span><span class="s4">'row'</span><span class="s1">] - start[</span><span class="s4">'row'</span><span class="s1">] &gt; </span><span class="s5">0</span><span class="s1">) { </span><span class="s0">// downwards</span>
+            <span class="s3">if </span><span class="s1">(end[</span><span class="s4">'col'</span><span class="s1">] - start[</span><span class="s4">'col'</span><span class="s1">] &gt; </span><span class="s5">0</span><span class="s1">) {</span><span class="s0">// left - right</span>
+                <span class="s3">if </span><span class="s1">(self.compact) {</span>
+                    <span class="s1">line.attr(</span><span class="s4">&quot;d&quot;</span><span class="s1">, </span><span class="s4">&quot;M &quot; </span><span class="s1">+ String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(start[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                        <span class="s1">String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + </span><span class="s5">14 </span><span class="s1">+ offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String((end[</span><span class="s4">'row'</span><span class="s1">] - </span><span class="s5">1</span><span class="s1">) * self.height) + </span><span class="s4">&quot; &quot; </span><span class="s1">+ </span><span class="s0">// first turn of hotizontal-line going away from node</span>
+                        <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String((end[</span><span class="s4">'row'</span><span class="s1">] - </span><span class="s5">1</span><span class="s1">) * self.height) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                        <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">)</span>
+                    <span class="s1">);</span>
+                <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                    <span class="s1">line.attr(</span><span class="s4">&quot;d&quot;</span><span class="s1">, </span><span class="s4">&quot;M &quot; </span><span class="s1">+ String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(start[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                        <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(start[</span><span class="s4">'row'</span><span class="s1">] * self.height) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                        <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">14</span><span class="s1">)</span>
+                    <span class="s1">);</span>
+                <span class="s1">}</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{ </span><span class="s0">// right - left</span>
+                <span class="s1">line.attr(</span><span class="s4">&quot;d&quot;</span><span class="s1">, </span><span class="s4">&quot;M &quot; </span><span class="s1">+ String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(start[</span><span class="s4">'row'</span><span class="s1">] * self.height) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">35</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + </span><span class="s5">14 </span><span class="s1">+ offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">35</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+ </span><span class="s0">// last turn of horizontal-line going into the node</span>
+                    <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">)</span>
+                <span class="s1">);</span>
+            <span class="s1">}</span>
+        <span class="s1">} </span><span class="s3">else if </span><span class="s1">(end[</span><span class="s4">'row'</span><span class="s1">] - start[</span><span class="s4">'row'</span><span class="s1">] &lt; </span><span class="s5">0</span><span class="s1">) { </span><span class="s0">// upwards</span>
+            <span class="s3">if </span><span class="s1">(num_lines &gt; </span><span class="s5">1</span><span class="s1">) {</span><span class="s0">// ??? no idea</span>
+                <span class="s1">line.attr(</span><span class="s4">&quot;d&quot;</span><span class="s1">, </span><span class="s4">&quot;M &quot; </span><span class="s1">+ String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(start[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String((max_line - </span><span class="s5">1</span><span class="s1">) * self.height + </span><span class="s5">5</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + </span><span class="s5">20 </span><span class="s1">+ offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String((max_line - </span><span class="s5">1</span><span class="s1">) * self.height + </span><span class="s5">5</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + </span><span class="s5">20 </span><span class="s1">+ offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">)</span>
+                <span class="s1">);</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                <span class="s1">line.attr(</span><span class="s4">&quot;d&quot;</span><span class="s1">, </span><span class="s4">&quot;M &quot; </span><span class="s1">+ String(start[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(start[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + </span><span class="s5">15 </span><span class="s1">+ offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(start[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + </span><span class="s5">15 </span><span class="s1">+ offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height + </span><span class="s5">15</span><span class="s1">) + </span><span class="s4">&quot; &quot; </span><span class="s1">+</span>
+                    <span class="s1">String(end[</span><span class="s4">'col'</span><span class="s1">] * self.width + offset) + </span><span class="s4">&quot;,&quot; </span><span class="s1">+ String(end[</span><span class="s4">'row'</span><span class="s1">] * self.height - </span><span class="s5">15</span><span class="s1">)</span>
+                <span class="s1">);</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s1">self.svg.container.append(line);</span>
+    <span class="s1">} </span><span class="s0">//  }}}</span>
+    <span class="s0">// }}}</span>
+    <span class="s0">// Initialize {{{</span>
+    <span class="s1">adaptor = wf_adaptor;</span>
+    <span class="s0">// }}}</span>
+<span class="s1">} </span><span class="s0">// }}}</span>
+
+<span class="s0">// WfDescription:</span>
+<span class="s0">// Manages the description. Is is further able to add/remove elements from the controlflow description.</span>
+<span class="s3">function </span><span class="s1">WfDescription(wf_adaptor, wf_illustrator) { </span><span class="s0">// Model {{{</span>
+    <span class="s0">// public variables</span>
+    <span class="s3">this</span><span class="s1">.elements = {}; </span><span class="s0">// the rngs</span>
+    <span class="s3">this</span><span class="s1">.source = </span><span class="s3">null</span><span class="s1">;</span>
+    <span class="s0">// private variables</span>
+    <span class="s3">var </span><span class="s1">self = </span><span class="s3">this</span><span class="s1">;</span>
+    <span class="s3">var </span><span class="s1">adaptor;</span>
+    <span class="s3">var </span><span class="s1">illustrator;</span>
+    <span class="s3">var </span><span class="s1">description;</span>
+    <span class="s3">var </span><span class="s1">id_counter = {};</span>
+    <span class="s3">var </span><span class="s1">update_illustrator = </span><span class="s3">true</span><span class="s1">;</span>
+    <span class="s3">var </span><span class="s1">labels = [];</span>
+
+    <span class="s0">// Set Labels //{{{</span>
+    <span class="s3">this</span><span class="s1">.set_labels = </span><span class="s3">function </span><span class="s1">(graph) {</span>
+        <span class="s3">if </span><span class="s1">(illustrator.striped == </span><span class="s3">true </span><span class="s1">&amp;&amp; illustrator.compact == </span><span class="s3">false</span><span class="s1">) {</span>
+            <span class="s3">for </span><span class="s1">(</span><span class="s3">var </span><span class="s1">i = </span><span class="s5">0</span><span class="s1">; i &lt; graph.max.row; i++) {</span>
+                <span class="s1">illustrator.draw.draw_stripe(i, graph.max.col);</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s3">if </span><span class="s1">(illustrator.compact == </span><span class="s3">false</span><span class="s1">) {</span>
+            <span class="s1">adaptor.draw_labels(graph.max, labels, illustrator.height_shift, illustrator.striped == </span><span class="s3">true </span><span class="s1">? </span><span class="s3">true </span><span class="s1">: </span><span class="s3">false</span><span class="s1">);</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">adaptor.draw_labels(graph.max, [], illustrator.height_shift, </span><span class="s3">false</span><span class="s1">);</span>
+        <span class="s1">}</span>
+        <span class="s3">if </span><span class="s1">(illustrator.compact == </span><span class="s3">false</span><span class="s1">) {</span>
+            <span class="s3">if </span><span class="s1">(labels.length &gt; </span><span class="s5">0</span><span class="s1">) {</span>
+                <span class="s3">for </span><span class="s1">(</span><span class="s3">const </span><span class="s1">[key, a] of Object.entries(labels)) {</span>
+                    <span class="s3">if </span><span class="s1">(a.label &amp;&amp; a.label[</span><span class="s5">0</span><span class="s1">] &amp;&amp; a.label[</span><span class="s5">0</span><span class="s1">].column == </span><span class="s4">'Label' </span><span class="s1">&amp;&amp; a.label[</span><span class="s5">0</span><span class="s1">].value) {</span>
+                        <span class="s0">// illustrator.draw.draw_label(a.tname, a.element_id, a.label[0].value, a.row, a.col + 0.8, graph.svg);</span>
+                    <span class="s1">}</span>
+                <span class="s1">}</span>
+                <span class="s1">;</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+    <span class="s1">} </span><span class="s0">//}}}</span>
+
+
+    <span class="s0">// Generic Functions {{{</span>
+    <span class="s3">this</span><span class="s1">.set_description = </span><span class="s3">function </span><span class="s1">(desc, auto_update) { </span><span class="s0">// public {{{</span>
+        <span class="s3">if </span><span class="s1">(auto_update != undefined) update_illustrator = auto_update;</span>
+        <span class="s3">if </span><span class="s1">(</span><span class="s3">typeof </span><span class="s1">desc == </span><span class="s4">&quot;string&quot;</span><span class="s1">) {</span>
+            <span class="s1">description = $($.parseXML(desc));</span>
+        <span class="s1">} </span><span class="s3">else if </span><span class="s1">(desc </span><span class="s3">instanceof </span><span class="s1">jQuery) {</span>
+            <span class="s1">description = desc;</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">alert(</span><span class="s4">&quot;WfDescription: unknown description type:</span><span class="s6">\n</span><span class="s4">Constructor-Name: &quot; </span><span class="s1">+ desc.constructor + </span><span class="s4">&quot; / TypeOf: &quot; </span><span class="s1">+ (</span><span class="s3">typeof </span><span class="s1">desc));</span>
+            <span class="s1">description = </span><span class="s3">null</span><span class="s1">;</span>
+        <span class="s1">}</span>
+        <span class="s1">id_counter = {};</span>
+        <span class="s1">labels = [];</span>
+        <span class="s1">illustrator.clear();</span>
+
+        <span class="s3">function </span><span class="s1">getOffsetsMap(root, level = </span><span class="s5">0</span><span class="s1">) {</span>
+            <span class="s1">$(root)</span>
+                <span class="s1">.children()</span>
+                <span class="s1">.filter(</span><span class="s3">function </span><span class="s1">() {</span>
+                    <span class="s3">return this</span><span class="s1">.localName[</span><span class="s5">0</span><span class="s1">] != </span><span class="s4">&quot;_&quot;</span><span class="s1">;</span>
+                <span class="s1">})</span>
+                <span class="s1">.each(</span><span class="s3">function </span><span class="s1">() {</span>
+                    <span class="s3">var </span><span class="s1">context = </span><span class="s3">this</span><span class="s1">;</span>
+                    <span class="s3">var </span><span class="s1">tname = </span><span class="s3">this</span><span class="s1">.tagName;</span>
+                    <span class="s3">var </span><span class="s1">sname = sym_name(tname, context);</span>
+                    <span class="s3">if </span><span class="s1">(</span>
+                        <span class="s1">illustrator.elements[tname] != undefined &amp;&amp;</span>
+                        <span class="s1">illustrator.elements[tname].type == </span><span class="s4">&quot;complex&quot;</span>
+                    <span class="s1">) {</span>
+                        <span class="s1">getOffsetsMap(context, level++);</span>
+                    <span class="s1">}</span>
+                    <span class="s3">var </span><span class="s1">label = </span><span class="s4">''</span>
+                    <span class="s3">if </span><span class="s1">(illustrator.elements[sname].label) {</span>
+                        <span class="s3">var </span><span class="s1">lab = illustrator.elements[sname].label(context)</span>
+                        <span class="s3">if </span><span class="s1">(lab &amp;&amp; lab[</span><span class="s5">0</span><span class="s1">] &amp;&amp; lab[</span><span class="s5">0</span><span class="s1">].value &amp;&amp; lab[</span><span class="s5">0</span><span class="s1">].column == </span><span class="s4">'Label' </span><span class="s1">&amp;&amp; lab[</span><span class="s5">0</span><span class="s1">].value != </span><span class="s4">''</span><span class="s1">) {</span>
+                            <span class="s1">label = lab[</span><span class="s5">0</span><span class="s1">].value</span>
+                        <span class="s1">}</span>
+                        <span class="s1">self.moveOffset =</span>
+                            <span class="s1">estimateTextWidth(label) / </span><span class="s5">2</span><span class="s1">;</span>
+                    <span class="s1">}</span>
+                    <span class="s3">if </span><span class="s1">(tname == </span><span class="s4">&quot;otherwise&quot;</span><span class="s1">) {</span>
+                        <span class="s1">self</span>
+                    <span class="s1">}</span>
+                    <span class="s0">/* if (tname === &quot;call&quot;) { 
+                         self.moveOffset = 
+                             estimateTextWidth(label) / 2; 
+                     }*/</span>
+                    <span class="s1">self.drawOffsetArr.push({</span>
+                        <span class="s1">tname: tname,</span>
+                        <span class="s1">level: level,</span>
+                        <span class="s1">moveOffset: self.moveOffset,</span>
+                        <span class="s0">/*lineMoveOffset: self.moveOffset, 
+                        oldMoveOffset: self.moveOffset,*/</span>
+                    <span class="s1">}); </span><span class="s0">// 可保留可不保留</span>
+                <span class="s1">});</span>
+        <span class="s1">}</span>
+
+        <span class="s1">self.drawOffsetArr = [];</span>
+
+        <span class="s1">getOffsetsMap(description.children(</span><span class="s4">'description'</span><span class="s1">).get(</span><span class="s5">0</span><span class="s1">))</span><span class="s0">/* 
+         * moveOffset 
+         * 可以取最小的 moveOffset 为所有偏移量 
+         * 也可以算一算平均值，大概差不多就行 
+         * 目前直接设置40了，就是说上面的计算代码可以不要 
+         illustrator.moveOffset = self.drawOffsetArr.filter((i)=&gt;i.tname ==='call').sort((a,b)=&gt;a.moveOffset-b.moveOffset)[0].moveOffset*/</span>
+        <span class="s1">illustrator.moveOffset = </span><span class="s5">0</span>
+        <span class="s1">console.log(illustrator.moveOffset)</span>
+        <span class="s3">var </span><span class="s1">graph = parse(description.children(</span><span class="s4">'description'</span><span class="s1">).get(</span><span class="s5">0</span><span class="s1">), {</span><span class="s4">'row'</span><span class="s1">: </span><span class="s5">0</span><span class="s1">, </span><span class="s4">'col'</span><span class="s1">: </span><span class="s5">0</span><span class="s1">, final: </span><span class="s3">false</span><span class="s1">, wide: </span><span class="s3">false</span><span class="s1">});</span>
+        <span class="s1">illustrator.set_svg(graph);</span>
+        <span class="s0">// set labels</span>
+        <span class="s1">self.set_labels(graph);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">gd = </span><span class="s3">this</span><span class="s1">.get_description = </span><span class="s3">function </span><span class="s1">() { </span><span class="s0">//  public {{{</span>
+        <span class="s3">var </span><span class="s1">serxml = $(description.get(</span><span class="s5">0</span><span class="s1">).documentElement).clone(</span><span class="s3">true</span><span class="s1">);</span>
+        <span class="s1">serxml.removeAttr(</span><span class="s4">'svg-id'</span><span class="s1">);</span>
+        <span class="s1">serxml.removeAttr(</span><span class="s4">'svg-type'</span><span class="s1">);</span>
+        <span class="s1">serxml.removeAttr(</span><span class="s4">'svg-subtype'</span><span class="s1">);</span>
+        <span class="s1">serxml.removeAttr(</span><span class="s4">'svg-label'</span><span class="s1">);</span>
+        <span class="s1">$(</span><span class="s4">'*[svg-id]'</span><span class="s1">, serxml).each(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s1">$(</span><span class="s3">this</span><span class="s1">).removeAttr(</span><span class="s4">'svg-id'</span><span class="s1">);</span>
+        <span class="s1">});</span>
+        <span class="s1">$(</span><span class="s4">'*[svg-type]'</span><span class="s1">, serxml).each(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s1">$(</span><span class="s3">this</span><span class="s1">).removeAttr(</span><span class="s4">'svg-type'</span><span class="s1">);</span>
+        <span class="s1">});</span>
+        <span class="s1">$(</span><span class="s4">'*[svg-subtype]'</span><span class="s1">, serxml).each(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s1">$(</span><span class="s3">this</span><span class="s1">).removeAttr(</span><span class="s4">'svg-subtype'</span><span class="s1">);</span>
+        <span class="s1">});</span>
+        <span class="s1">$(</span><span class="s4">'*[svg-label]'</span><span class="s1">, serxml).each(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s1">$(</span><span class="s3">this</span><span class="s1">).removeAttr(</span><span class="s4">'svg-label'</span><span class="s1">);</span>
+        <span class="s1">});</span>
+        <span class="s3">return </span><span class="s1">serxml.serializeXML();</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.get_node_by_svg_id = </span><span class="s3">function </span><span class="s1">(svg_id) { </span><span class="s0">// {{{</span>
+        <span class="s3">return </span><span class="s1">$(</span><span class="s4">'[svg-id = </span><span class="s6">\'</span><span class="s4">' </span><span class="s1">+ svg_id + </span><span class="s4">'</span><span class="s6">\'</span><span class="s4">]'</span><span class="s1">, description);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">context_eval = </span><span class="s3">this</span><span class="s1">.context_eval = </span><span class="s3">function </span><span class="s1">(what) { </span><span class="s0">// {{{</span>
+        <span class="s3">return </span><span class="s1">eval(what);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">get_free_id = </span><span class="s3">this</span><span class="s1">.get_free_id = </span><span class="s3">function </span><span class="s1">(other) { </span><span class="s0">// {{{</span>
+        <span class="s3">var </span><span class="s1">existing = </span><span class="s3">new </span><span class="s1">Array();</span>
+        <span class="s3">if </span><span class="s1">(other) {</span>
+            <span class="s3">if </span><span class="s1">($(other).attr(</span><span class="s4">'id'</span><span class="s1">)) {</span>
+                <span class="s1">existing.push($(other).attr(</span><span class="s4">'id'</span><span class="s1">));</span>
+            <span class="s1">}</span>
+            <span class="s1">$(other).find(</span><span class="s4">&quot;[id]&quot;</span><span class="s1">).each(</span><span class="s3">function </span><span class="s1">(k, v) {</span>
+                <span class="s1">existing.push($(v).attr(</span><span class="s4">'id'</span><span class="s1">));</span>
+            <span class="s1">});</span>
+        <span class="s1">}</span>
+        <span class="s1">$(</span><span class="s4">'*[id]'</span><span class="s1">, description).each(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s1">existing.push($(</span><span class="s3">this</span><span class="s1">).attr(</span><span class="s4">'id'</span><span class="s1">))</span>
+        <span class="s1">});</span>
+        <span class="s3">var </span><span class="s1">id = </span><span class="s5">1</span><span class="s1">;</span>
+        <span class="s3">while </span><span class="s1">($.inArray(</span><span class="s4">'a' </span><span class="s1">+ id, existing) != -</span><span class="s5">1</span><span class="s1">) {</span>
+            <span class="s1">id += </span><span class="s5">1</span><span class="s1">;</span>
+        <span class="s1">}</span>
+        <span class="s3">return </span><span class="s4">'a' </span><span class="s1">+ id;</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">refresh = </span><span class="s3">this</span><span class="s1">.refresh = </span><span class="s3">function </span><span class="s1">(doit) {</span>
+        <span class="s1">id_counter = {};</span>
+        <span class="s1">labels = [];</span>
+        <span class="s1">illustrator.clear();</span>
+        <span class="s3">var </span><span class="s1">graph = parse(description.children(</span><span class="s4">'description'</span><span class="s1">).get(</span><span class="s5">0</span><span class="s1">), {</span><span class="s4">'row'</span><span class="s1">: </span><span class="s5">0</span><span class="s1">, </span><span class="s4">'col'</span><span class="s1">: </span><span class="s5">0</span><span class="s1">});</span>
+        <span class="s1">illustrator.set_svg(graph);</span>
+        <span class="s0">// set labels</span>
+        <span class="s1">self.set_labels(graph);</span>
+        <span class="s1">doit(self);</span>
+    <span class="s1">}</span>
+    <span class="s3">var </span><span class="s1">update = </span><span class="s3">this</span><span class="s1">.update = </span><span class="s3">function </span><span class="s1">(svgid) { </span><span class="s0">// {{{</span>
+        <span class="s1">id_counter = {};</span>
+        <span class="s3">if </span><span class="s1">(update_illustrator) {</span>
+            <span class="s1">labels = [];</span>
+            <span class="s1">illustrator.clear();</span>
+            <span class="s3">var </span><span class="s1">graph = parse(description.children(</span><span class="s4">'description'</span><span class="s1">).get(</span><span class="s5">0</span><span class="s1">), {</span><span class="s4">'row'</span><span class="s1">: </span><span class="s5">0</span><span class="s1">, </span><span class="s4">'col'</span><span class="s1">: </span><span class="s5">0</span><span class="s1">});</span>
+            <span class="s1">illustrator.set_svg(graph);</span>
+            <span class="s1">self.set_labels(graph);</span>
+        <span class="s1">}</span>
+
+        <span class="s3">var </span><span class="s1">newn = $(</span><span class="s4">'*[new=true]'</span><span class="s1">, description);</span>
+        <span class="s1">newn.removeAttr(</span><span class="s4">'new'</span><span class="s1">);</span>
+
+        <span class="s3">if </span><span class="s1">(newn.attr(</span><span class="s4">'svg-id'</span><span class="s1">) != undefined)</span>
+            <span class="s1">adaptor.notify(newn.attr(</span><span class="s4">'svg-id'</span><span class="s1">));</span>
+        <span class="s3">else if </span><span class="s1">(svgid != undefined)</span>
+            <span class="s1">adaptor.notify(svgid);</span>
+        <span class="s3">else if </span><span class="s1">(newn.parent(</span><span class="s4">'[svg-id]'</span><span class="s1">).length &gt; </span><span class="s5">0</span><span class="s1">)</span>
+            <span class="s1">adaptor.notify(newn.parent(</span><span class="s4">'[svg-id]'</span><span class="s1">).attr(</span><span class="s4">'svg-id'</span><span class="s1">));</span>
+        <span class="s3">else</span>
+            <span class="s1">console.info(</span><span class="s4">'Something went horribly wrong'</span><span class="s1">);</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s0">// }}}</span>
+    <span class="s0">// Adaption functions {{{</span>
+    <span class="s3">this</span><span class="s1">.insert_after = </span><span class="s3">function </span><span class="s1">(new_node, target, source_opts) { </span><span class="s0">// {{{</span>
+        <span class="s3">if </span><span class="s1">($.isArray(new_node)) {</span>
+            <span class="s1">$.each(new_node, </span><span class="s3">function </span><span class="s1">(k, v) {</span>
+                <span class="s3">var </span><span class="s1">nn = self.source(v, source_opts);</span>
+                <span class="s1">target.after(nn);</span>
+                <span class="s1">nn.attr(</span><span class="s4">'new'</span><span class="s1">, </span><span class="s4">'true'</span><span class="s1">);</span>
+            <span class="s1">});</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s3">var </span><span class="s1">nn = self.source(new_node, source_opts);</span>
+            <span class="s1">target.after(nn);</span>
+            <span class="s1">nn.attr(</span><span class="s4">'new'</span><span class="s1">, </span><span class="s4">'true'</span><span class="s1">);</span>
+        <span class="s1">}</span>
+        <span class="s1">update();</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.insert_first_into = </span><span class="s3">function </span><span class="s1">(new_node, target, source_opts) { </span><span class="s0">// {{{</span>
+        <span class="s3">if </span><span class="s1">($.isArray(new_node)) {</span>
+            <span class="s1">$.each(new_node, </span><span class="s3">function </span><span class="s1">(k, v) {</span>
+                <span class="s3">var </span><span class="s1">nn = self.source(v, source_opts);</span>
+                <span class="s1">target.prepend(nn);</span>
+                <span class="s1">nn.attr(</span><span class="s4">'new'</span><span class="s1">, </span><span class="s4">'true'</span><span class="s1">);</span>
+            <span class="s1">});</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s3">var </span><span class="s1">nn = self.source(new_node, source_opts);</span>
+            <span class="s1">target.prepend(nn);</span>
+            <span class="s1">nn.attr(</span><span class="s4">'new'</span><span class="s1">, </span><span class="s4">'true'</span><span class="s1">);</span>
+        <span class="s1">}</span>
+        <span class="s1">update();</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.insert_last_into = </span><span class="s3">function </span><span class="s1">(new_node, target) { </span><span class="s0">// {{{</span>
+        <span class="s3">if </span><span class="s1">($.isArray(new_node)) {</span>
+            <span class="s1">$.each(new_node, </span><span class="s3">function </span><span class="s1">(k, v) {</span>
+                <span class="s3">var </span><span class="s1">nn = self.source(v);</span>
+                <span class="s1">target.append(nn);</span>
+                <span class="s1">nn.attr(</span><span class="s4">'new'</span><span class="s1">, </span><span class="s4">'true'</span><span class="s1">);</span>
+            <span class="s1">});</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s3">var </span><span class="s1">nn = self.source(new_node);</span>
+            <span class="s1">target.append(nn);</span>
+            <span class="s1">nn.attr(</span><span class="s4">'new'</span><span class="s1">, </span><span class="s4">'true'</span><span class="s1">);</span>
+        <span class="s1">}</span>
+        <span class="s1">update();</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">this</span><span class="s1">.remove = </span><span class="s3">function </span><span class="s1">(selector, target) {</span><span class="s0">//{{{</span>
+        <span class="s3">var </span><span class="s1">svgid;</span>
+        <span class="s3">if </span><span class="s1">(selector == undefined) {</span>
+            <span class="s1">svgid = target.attr(</span><span class="s4">'svg-id'</span><span class="s1">);</span>
+            <span class="s1">target.remove()</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">svgid = $(selector, target).attr(</span><span class="s4">'svg-id'</span><span class="s1">);</span>
+            <span class="s3">if </span><span class="s1">(!svgid) {</span>
+                <span class="s1">svgid = target.attr(</span><span class="s4">'svg-id'</span><span class="s1">);</span>
+            <span class="s1">}</span>
+            <span class="s1">$(selector, target).remove();</span>
+        <span class="s1">}</span>
+        <span class="s1">update(svgid);</span>
+    <span class="s1">}</span>
+    <span class="s0">// }}}</span>
+    <span class="s0">// }}}</span>
+    <span class="s0">// Helper Functions {{{</span>
+
+    <span class="s3">function </span><span class="s1">get_label_shift_col(sname, context) {</span>
+        <span class="s3">if </span><span class="s1">(</span>
+            <span class="s1">illustrator.elements[sname] &amp;&amp;</span>
+            <span class="s3">typeof </span><span class="s1">illustrator.elements[sname].label === </span><span class="s4">'function'</span>
+        <span class="s1">) {</span>
+            <span class="s3">const </span><span class="s1">labelData = illustrator.elements[sname].label(context);</span>
+            <span class="s3">if </span><span class="s1">(</span>
+                <span class="s1">Array.isArray(labelData) &amp;&amp;</span>
+                <span class="s1">labelData.length &gt; </span><span class="s5">0 </span><span class="s1">&amp;&amp;</span>
+                <span class="s1">labelData[</span><span class="s5">0</span><span class="s1">].value &amp;&amp;</span>
+                <span class="s1">labelData[</span><span class="s5">0</span><span class="s1">].value.length &gt; </span><span class="s5">0</span>
+            <span class="s1">) {</span>
+                <span class="s3">const </span><span class="s1">labelText = labelData[</span><span class="s5">0</span><span class="s1">].value;</span>
+                <span class="s3">const </span><span class="s1">labelLength = labelText.length;</span>
+                <span class="s3">return </span><span class="s1">Math.floor(labelLength / </span><span class="s5">6</span><span class="s1">);</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s3">return </span><span class="s5">0</span><span class="s1">;</span>
+    <span class="s1">}</span>
+
+    <span class="s3">var </span><span class="s1">parse = </span><span class="s3">function </span><span class="s1">(root, parent_pos) { </span><span class="s0">// private {{{</span>
+        <span class="s3">var </span><span class="s1">pos = jQuery.extend(</span><span class="s3">true</span><span class="s1">, {}, parent_pos);</span>
+        <span class="s3">var </span><span class="s1">max = {</span><span class="s4">'row'</span><span class="s1">: </span><span class="s5">0</span><span class="s1">, </span><span class="s4">'col'</span><span class="s1">: </span><span class="s5">0</span><span class="s1">};</span>
+        <span class="s3">var </span><span class="s1">prev = [parent_pos]; </span><span class="s0">// connects parent with child(s), depending on the expansion</span>
+        <span class="s3">var </span><span class="s1">endnodes = [];</span>
+        <span class="s3">var </span><span class="s1">sname = sym_name(root.tagName, root);</span>
+        <span class="s3">var </span><span class="s1">root_expansion = illustrator.elements[root.tagName].expansion(root);</span>
+        <span class="s3">var </span><span class="s1">block = {</span><span class="s4">'max'</span><span class="s1">: {}}; </span><span class="s0">// e.g. {'max':{'row':0,'col':0}, 'endpoints':[]};</span>
+
+        <span class="s3">var </span><span class="s1">group = $X(</span><span class="s4">'&lt;g class=&quot;group&quot; xmlns=&quot;http://www.w3.org/2000/svg&quot;/&gt;'</span><span class="s1">);</span>
+
+
+        <span class="s3">if </span><span class="s1">(root_expansion == </span><span class="s4">'horizontal'</span><span class="s1">) pos.row++;</span>
+
+        <span class="s0">/**</span>
+         <span class="s0">*  这里感觉应该是你的第三个问题的点，遇到那个 sname “parallel” 的col是不是要col ➕ 1</span>
+         <span class="s0">*  我是直接改了theme.js 里面的值，为false了，你可以这边判断，甚至可以列 ➖ 1</span>
+         <span class="s0">*  if(sname === 'parallel_start') pos.col = pos.col - 1.5</span>
+         <span class="s0">*/</span>
+
+        <span class="s3">if </span><span class="s1">(illustrator.elements[root.tagName].col_shift(root) == </span><span class="s3">true </span><span class="s1">&amp;&amp; root_expansion != </span><span class="s4">'horizontal'</span><span class="s1">) pos.col++;</span>
+        <span class="s0">//if (sname === 'parallel_start') pos.col = pos.col</span>
+        <span class="s3">if </span><span class="s1">(root.tagName == </span><span class="s4">'description'</span><span class="s1">) { </span><span class="s0">// First parsing {{{</span>
+            <span class="s1">pos.row++;</span>
+            <span class="s1">$(root).attr(</span><span class="s4">'svg-id'</span><span class="s1">, </span><span class="s4">'description'</span><span class="s1">);</span>
+            <span class="s1">$(root).attr(</span><span class="s4">'svg-type'</span><span class="s1">, </span><span class="s4">'description'</span><span class="s1">);</span>
+            <span class="s1">$(root).attr(</span><span class="s4">'svg-subtype'</span><span class="s1">, </span><span class="s4">'description'</span><span class="s1">);</span>
+            <span class="s1">group.attr(</span><span class="s4">'element-id'</span><span class="s1">, </span><span class="s4">'group-description'</span><span class="s1">);</span>
+            <span class="s3">if </span><span class="s1">(illustrator.elements[sname].label) {</span>
+                <span class="s0">// javascript object spread syntax is my new weird crush - the JS designers must be serious people</span>
+                <span class="s1">labels.push({</span>
+                    <span class="s1">...{</span>
+                        <span class="s1">row: pos.row,</span>
+                        <span class="s1">col: pos.col,</span>
+                        <span class="s1">element_id: </span><span class="s4">'start'</span><span class="s1">,</span>
+                        <span class="s1">tname: </span><span class="s4">'start'</span><span class="s1">,</span>
+                        <span class="s1">label: illustrator.elements[sname].label(root)</span>
+                    <span class="s1">}, ...illustrator.draw.get_y(pos.row)</span>
+                <span class="s1">});</span>
+            <span class="s1">}</span>
+            <span class="s1">illustrator.draw.draw_symbol(sname, </span><span class="s4">'description'</span><span class="s1">, </span><span class="s4">'START'</span><span class="s1">, pos.row, pos.col, group);</span>
+        <span class="s1">} </span><span class="s0">// }}}</span>
+
+        <span class="s1">$(root).children().filter(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s3">return this</span><span class="s1">.localName[</span><span class="s5">0</span><span class="s1">] != </span><span class="s4">'_'</span><span class="s1">;</span>
+        <span class="s1">}).each(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s3">var </span><span class="s1">context = </span><span class="s3">this</span><span class="s1">;</span>
+            <span class="s3">var </span><span class="s1">tname = context.tagName;</span>
+            <span class="s3">var </span><span class="s1">sname = sym_name(tname, context);</span>
+            <span class="s1">pos.final = illustrator.elements[sname].final ? </span><span class="s3">true </span><span class="s1">: </span><span class="s3">false</span><span class="s1">;</span>
+            <span class="s1">pos.wide = illustrator.elements[sname].wide ? </span><span class="s3">true </span><span class="s1">: </span><span class="s3">false</span><span class="s1">;</span>
+
+            <span class="s0">// Calculate next position {{{</span>
+            <span class="s3">if </span><span class="s1">(root_expansion == </span><span class="s4">'vertical'</span><span class="s1">) pos.row++;</span>
+            <span class="s3">if </span><span class="s1">(root_expansion == </span><span class="s4">'horizontal'</span><span class="s1">) {</span>
+                <span class="s1">pos.col++;</span>
+                <span class="s3">if </span><span class="s1">(!illustrator.compact) {</span>
+                    <span class="s3">if </span><span class="s1">(block.max.row) {</span>
+                        <span class="s1">pos.row = block.max.row + </span><span class="s5">1</span><span class="s1">;</span>
+                    <span class="s1">}</span>
+                <span class="s1">}</span>
+            <span class="s1">}</span>
+            <span class="s3">if </span><span class="s1">(illustrator.elements[tname] != undefined &amp;&amp; illustrator.elements[tname].type == </span><span class="s4">'complex'</span><span class="s1">) {</span>
+                <span class="s3">if </span><span class="s1">(illustrator.elements[tname] != undefined &amp;&amp; !illustrator.elements[tname].svg) pos.row--;</span>
+                <span class="s0">// TODO: Remaining problem is the order inside the svg. Thats why the connection is above the icon</span>
+                <span class="s1">block = parse(context, jQuery.extend(</span><span class="s3">true</span><span class="s1">, {}, pos));</span>
+                <span class="s1">group.append(block.svg);</span>
+                <span class="s1">block.svg.attr(</span><span class="s4">'id'</span><span class="s1">, </span><span class="s4">'group-' </span><span class="s1">+ $(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">));</span>
+                <span class="s3">if </span><span class="s1">(illustrator.elements[sname].endnodes == </span><span class="s4">'aggregate'</span><span class="s1">) {</span>
+                    <span class="s1">endnodes = [];</span>
+                <span class="s1">} </span><span class="s0">// resets endpoints e.g. potential preceding primitive</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                <span class="s3">if </span><span class="s1">(illustrator.elements[tname] != undefined &amp;&amp; illustrator.elements[tname].type == </span><span class="s4">'primitive' </span><span class="s1">&amp;&amp; illustrator.elements[tname].svg) { </span><span class="s0">// This enables &quot;invisble&quot; elements, by returning undefined in the SVG function (e.g. constraints)</span>
+                    <span class="s1">block.max.row = pos.row;</span>
+                    <span class="s1">block.max.col = pos.col;</span>
+                    <span class="s1">block.endnodes = [pos];</span>
+                    <span class="s1">block.svg = group;</span>
+                <span class="s1">}</span>
+            <span class="s1">}</span>
+            <span class="s0">// }}}</span>
+
+            <span class="s3">var </span><span class="s1">g;</span>
+
+            <span class="s1">set_details(tname, sname, pos, context);</span>
+            <span class="s3">let </span><span class="s1">shiftCol = get_label_shift_col(sname,context)</span>
+            <span class="s0">//console.log(shiftCol)</span>
+            <span class="s1">pos.col += </span><span class="s5">9</span>
+
+            <span class="s3">var </span><span class="s1">origpos = jQuery.extend(</span><span class="s3">true</span><span class="s1">, {}, pos);</span>
+
+            <span class="s1">[g, endnodes] = draw_position(tname, origpos, prev, block, group, endnodes, context);</span>
+
+            <span class="s0">// Prepare next iteration {{{</span>
+            <span class="s3">if </span><span class="s1">(root_expansion == </span><span class="s4">'vertical'</span><span class="s1">) {</span>
+                <span class="s1">prev = jQuery.extend(</span><span class="s3">true</span><span class="s1">, {}, endnodes);</span>
+                <span class="s1">pos.row = block.max.row;</span>
+            <span class="s1">} </span><span class="s0">// covers e.g. input's for alternative, parallel_branch, ... everything with horizontal expansion</span>
+            <span class="s3">if </span><span class="s1">(root_expansion == </span><span class="s4">'horizontal'</span><span class="s1">) pos.col = block.max.col;</span><span class="s0">//?</span>
+            <span class="s3">if </span><span class="s1">(max.row &lt; block.max.row) max.row = block.max.row;</span>
+            <span class="s3">if </span><span class="s1">(max.col &lt; block.max.col) max.col = block.max.col;</span>
+            <span class="s0">// }}}</span>
+
+            <span class="s3">if </span><span class="s1">(illustrator.elements[sname].closing_symbol) {</span>
+                <span class="s3">var </span><span class="s1">ctname = illustrator.elements[sname].closing_symbol;</span>
+                <span class="s3">var </span><span class="s1">csname = sym_name(ctname, context);</span>
+                <span class="s1">pos.row++;</span>
+                <span class="s1">max.row++;</span>
+                <span class="s1">block.max.row = pos.row;</span>
+                <span class="s3">if </span><span class="s1">(illustrator.elements[sname].endnodes == </span><span class="s4">'this'</span><span class="s1">) {</span>
+                    <span class="s1">pos.col++;</span>
+                    <span class="s3">if </span><span class="s1">(pos.col &gt; max.col) {</span>
+                        <span class="s1">max.col++;</span>
+                        <span class="s1">block.max.col = pos.col;</span>
+                    <span class="s1">}</span>
+                    <span class="s1">draw_position(ctname, pos, block.endnodes, block, group, [], context, {svg: g, pos: origpos});</span>
+                    <span class="s1">pos.col--;</span>
+                <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                    <span class="s1">[undefined, endnodes] = draw_position(ctname, pos, prev, block, group, [], context, {</span>
+                        <span class="s1">svg: g,</span>
+                        <span class="s1">pos: origpos</span>
+                    <span class="s1">});</span>
+                <span class="s1">}</span>
+
+                <span class="s1">set_details(ctname, csname, pos, context, </span><span class="s3">true</span><span class="s1">);</span>
+                <span class="s1">prev = jQuery.extend(</span><span class="s3">true</span><span class="s1">, {}, endnodes);</span>
+            <span class="s1">}</span>
+        <span class="s1">});</span>
+
+        <span class="s3">if </span><span class="s1">($(root).children().filter(</span><span class="s3">function </span><span class="s1">() {</span>
+            <span class="s3">return this</span><span class="s1">.attributes[</span><span class="s4">'svg-id'</span><span class="s1">] != undefined;</span>
+        <span class="s1">}).length == </span><span class="s5">0</span><span class="s1">) { </span><span class="s0">// empty complex found</span>
+            <span class="s1">endnodes = [parent_pos];</span>
+            <span class="s1">max.row = parent_pos.row;</span>
+            <span class="s1">max.col = parent_pos.col;</span>
+        <span class="s1">}</span>
+
+        <span class="s3">if </span><span class="s1">(root.tagName == </span><span class="s4">'description' </span><span class="s1">&amp;&amp; illustrator.elements[root.tagName].closing_symbol) {</span>
+            <span class="s1">pos.row++;</span>
+            <span class="s1">max.row = pos.row;</span>
+            <span class="s1">draw_position(illustrator.elements[</span><span class="s4">'start'</span><span class="s1">].closing_symbol, pos, prev, block, group, [], </span><span class="s3">this</span><span class="s1">, {</span>
+                <span class="s1">svg: group,</span>
+                <span class="s1">pos: pos</span>
+            <span class="s1">});</span>
+        <span class="s1">}</span>
+
+        <span class="s3">return </span><span class="s1">{</span><span class="s4">'endnodes'</span><span class="s1">: endnodes, </span><span class="s4">'max'</span><span class="s1">: max, </span><span class="s4">'svg'</span><span class="s1">: group};</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s3">var </span><span class="s1">sym_name = </span><span class="s3">function </span><span class="s1">(tname, context) { </span><span class="s0">//{{{</span>
+        <span class="s3">var </span><span class="s1">sname;</span>
+        <span class="s3">if </span><span class="s1">(!illustrator.elements[tname]) {</span>
+            <span class="s1">sname = </span><span class="s4">'unknown'</span><span class="s1">;</span>
+        <span class="s1">} </span><span class="s3">else if </span><span class="s1">(</span><span class="s3">typeof </span><span class="s1">illustrator.elements[tname].resolve_symbol == </span><span class="s4">'function'</span><span class="s1">) {</span>
+            <span class="s1">sname = illustrator.elements[tname].resolve_symbol(context, illustrator.elements[tname].col_shift ? illustrator.elements[tname].col_shift(context) : undefined);</span>
+        <span class="s1">} </span><span class="s3">else if </span><span class="s1">(</span><span class="s3">typeof </span><span class="s1">illustrator.elements[tname].resolve_symbol == </span><span class="s4">'string'</span><span class="s1">) {</span>
+            <span class="s1">sname = illustrator.elements[tname].resolve_symbol;</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">sname = tname;</span>
+        <span class="s1">}</span>
+        <span class="s3">if </span><span class="s1">(sname == </span><span class="s3">null</span><span class="s1">) {</span>
+            <span class="s1">sname = tname;</span>
+        <span class="s1">}</span>
+        <span class="s3">return </span><span class="s1">sname;</span>
+    <span class="s1">} </span><span class="s0">//}}}</span>
+    <span class="s3">var </span><span class="s1">set_details = </span><span class="s3">function </span><span class="s1">(tname, sname, pos, context, simple) { </span><span class="s0">//{{{</span>
+        <span class="s3">if </span><span class="s1">(simple == undefined || simple == </span><span class="s3">false</span><span class="s1">) {</span>
+            <span class="s3">if </span><span class="s1">($(context).attr(</span><span class="s4">'id'</span><span class="s1">) == undefined) {</span>
+                <span class="s3">if </span><span class="s1">(id_counter[tname] == undefined) id_counter[tname] = -</span><span class="s5">1</span><span class="s1">;</span>
+                <span class="s1">$(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">, tname + </span><span class="s4">'_' </span><span class="s1">+ (++id_counter[tname]));</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                <span class="s1">$(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">, $(context).attr(</span><span class="s4">'id'</span><span class="s1">));</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s3">if </span><span class="s1">(illustrator.elements[sname].label) {</span>
+            <span class="s3">var </span><span class="s1">lab = illustrator.elements[sname].label(context);</span>
+            <span class="s3">if </span><span class="s1">(lab &amp;&amp; lab[</span><span class="s5">0</span><span class="s1">] &amp;&amp; lab[</span><span class="s5">0</span><span class="s1">].value &amp;&amp; lab[</span><span class="s5">0</span><span class="s1">].column == </span><span class="s4">'Label' </span><span class="s1">&amp;&amp; lab[</span><span class="s5">0</span><span class="s1">].value != </span><span class="s4">''</span><span class="s1">) {</span>
+                <span class="s1">$(context).attr(</span><span class="s4">'svg-label'</span><span class="s1">, lab[</span><span class="s5">0</span><span class="s1">].value);</span>
+            <span class="s1">}</span>
+            <span class="s1">labels.push({</span>
+                <span class="s1">...{</span>
+                    <span class="s1">row: pos.row,</span>
+                    <span class="s1">col: pos.col,</span>
+                    <span class="s1">element_id: $(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">),</span>
+                    <span class="s1">tname: tname,</span>
+                    <span class="s1">label: lab</span>
+                <span class="s1">}, ...illustrator.draw.get_y(pos.row)</span>
+            <span class="s1">});</span>
+        <span class="s1">}</span>
+    <span class="s1">} </span><span class="s0">//}}}</span>
+    <span class="s3">var </span><span class="s1">draw_position = </span><span class="s3">function </span><span class="s1">(tname, pos, prev, block, group, endnodes, context, second) { </span><span class="s0">// private {{{</span>
+        <span class="s3">var </span><span class="s1">sname = sym_name(tname, context);</span>
+        <span class="s0">// Draw Symbol {{{</span>
+        <span class="s3">if </span><span class="s1">(second) {</span>
+           <span class="s0">// console.log(second)</span>
+            <span class="s1">illustrator.draw.draw_symbol(sname, $(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">), $(context).attr(</span><span class="s4">'svg-label'</span><span class="s1">), pos.row, pos.col, second.svg, </span><span class="s3">true</span><span class="s1">).addClass(illustrator.elements[sname] ? illustrator.elements[sname].type : </span><span class="s4">'primitive unknown'</span><span class="s1">);</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">$(context).attr(</span><span class="s4">'svg-type'</span><span class="s1">, tname);</span>
+            <span class="s1">$(context).attr(</span><span class="s4">'svg-subtype'</span><span class="s1">, sname);</span>
+            <span class="s3">if </span><span class="s1">((illustrator.elements[sname] &amp;&amp; illustrator.elements[sname].svg) || sname == </span><span class="s4">'unknown'</span><span class="s1">) {</span>
+                <span class="s3">var </span><span class="s1">g = illustrator.draw.draw_symbol(sname, $(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">), $(context).attr(</span><span class="s4">'svg-label'</span><span class="s1">), pos.row, pos.col, block.svg).addClass(illustrator.elements[sname] ? illustrator.elements[sname].type : </span><span class="s4">'primitive unknown'</span><span class="s1">);</span>
+                <span class="s3">if </span><span class="s1">(illustrator.elements[sname].info) {</span>
+                    <span class="s3">var </span><span class="s1">info = illustrator.elements[sname].info(context);</span>
+                    <span class="s3">for </span><span class="s1">(</span><span class="s3">const </span><span class="s1">[key, val] of Object.entries(info)) {</span>
+                        <span class="s1">g.attr(key, val);</span>
+                    <span class="s1">}</span>
+                    <span class="s1">;</span>
+                <span class="s1">}</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                <span class="s1">console.log(</span><span class="s4">&quot;no icon &quot; </span><span class="s1">+ sname);</span>
+            <span class="s1">}</span>
+            <span class="s3">if </span><span class="s1">(illustrator.elements[sname] &amp;&amp; illustrator.elements[sname].border) {</span>
+                <span class="s3">var </span><span class="s1">wide = (illustrator.elements[sname].wide == </span><span class="s3">true </span><span class="s1">&amp;&amp; block.max.col == pos.col) ? pos.col + </span><span class="s5">1 </span><span class="s1">: block.max.col;</span>
+                <span class="s3">if </span><span class="s1">(illustrator.elements[sname].closing_symbol) {</span>
+                    <span class="s1">illustrator.draw.draw_border($(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">), pos, {</span>
+                        <span class="s1">col: wide,</span>
+                        <span class="s1">row: block.max.row + </span><span class="s5">1</span>
+                    <span class="s1">}, block.svg);</span>
+                <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                    <span class="s1">illustrator.draw.draw_border($(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">), pos, {</span>
+                        <span class="s1">col: wide,</span>
+                        <span class="s1">row: block.max.row</span>
+                    <span class="s1">}, block.svg);</span>
+                <span class="s1">}</span>
+            <span class="s1">}</span>
+            <span class="s3">if </span><span class="s1">(illustrator.elements[sname] &amp;&amp; illustrator.elements[sname].type == </span><span class="s4">'complex'</span><span class="s1">) {</span>
+                <span class="s3">var </span><span class="s1">wide = (illustrator.elements[sname].wide == </span><span class="s3">true </span><span class="s1">&amp;&amp; block.max.col == pos.col) ? pos.col + </span><span class="s5">1 </span><span class="s1">: block.max.col;</span>
+                <span class="s3">if </span><span class="s1">(illustrator.elements[sname].closing_symbol) {</span>
+                    <span class="s1">illustrator.draw.draw_tile($(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">), pos, {</span>
+                        <span class="s1">col: wide,</span>
+                        <span class="s1">row: block.max.row + </span><span class="s5">1</span>
+                    <span class="s1">}, block.svg);</span>
+                <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                    <span class="s1">illustrator.draw.draw_tile($(context).attr(</span><span class="s4">'svg-id'</span><span class="s1">), pos, {</span>
+                        <span class="s1">col: wide,</span>
+                        <span class="s1">row: block.max.row</span>
+                    <span class="s1">}, block.svg);</span>
+                <span class="s1">}</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s0">// }}}</span>
+        <span class="s0">// Calculate Connection {{{</span>
+        <span class="s3">if </span><span class="s1">(illustrator.elements[sname] != undefined &amp;&amp; illustrator.elements[sname].closeblock == </span><span class="s3">true</span><span class="s1">) {</span><span class="s0">// Close Block if element e.g. loop</span>
+            <span class="s3">if </span><span class="s1">(second) {</span>
+                <span class="s3">if </span><span class="s1">(second.pos.row + </span><span class="s5">1 </span><span class="s1">&lt; pos.row) { </span><span class="s0">// when no content, dont paint the up arrow</span>
+                    <span class="s1">illustrator.draw.draw_connection(group, pos, second.pos, block.max.row + </span><span class="s5">1</span><span class="s1">, </span><span class="s5">1</span><span class="s1">, </span><span class="s3">true</span><span class="s1">);</span>
+                <span class="s1">}</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                <span class="s3">for </span><span class="s1">(node </span><span class="s3">in </span><span class="s1">block.endnodes) {</span>
+                    <span class="s3">if </span><span class="s1">(!block.endnodes[node].final) {</span>
+                        <span class="s1">illustrator.draw.draw_connection(group, block.endnodes[node], pos, block.max.row + </span><span class="s5">1</span><span class="s1">, block.endnodes.length, </span><span class="s3">true</span><span class="s1">);</span>
+                    <span class="s1">}</span>
+                <span class="s1">}</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s3">if </span><span class="s1">(illustrator.elements[sname] != undefined &amp;&amp; illustrator.elements[sname].endnodes != </span><span class="s4">'this'</span><span class="s1">) {</span>
+            <span class="s3">for </span><span class="s1">(i </span><span class="s3">in </span><span class="s1">block.endnodes) {</span>
+               <span class="s1">endnodes.push(block.endnodes[i]);</span>
+            <span class="s1">} </span><span class="s0">// collects all endpoints from different childs e.g. alternatives from choose</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s1">endnodes = [jQuery.extend(</span><span class="s3">true</span><span class="s1">, {}, pos)];</span>
+        <span class="s1">} </span><span class="s0">// sets this element as only endpoint (aggregate)</span>
+        <span class="s3">if </span><span class="s1">(prev[</span><span class="s5">0</span><span class="s1">].row == </span><span class="s5">0 </span><span class="s1">|| prev[</span><span class="s5">0</span><span class="s1">].col == </span><span class="s5">0</span><span class="s1">) { </span><span class="s0">// this enforces the connection from description to the first element</span>
+           <span class="s1">illustrator.draw.draw_connection(group, {row: </span><span class="s5">1</span><span class="s1">, col: </span><span class="s5">1</span><span class="s1">}, pos, </span><span class="s3">null</span><span class="s1">, </span><span class="s3">null</span><span class="s1">, </span><span class="s3">true</span><span class="s1">);</span>
+        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+            <span class="s3">if </span><span class="s1">(illustrator.elements[sname].noarrow == undefined || illustrator.elements[sname].noarrow == </span><span class="s3">false</span><span class="s1">) {</span>
+                <span class="s3">for </span><span class="s1">(node </span><span class="s3">in </span><span class="s1">prev) {</span>
+                    <span class="s3">if </span><span class="s1">(!prev[node].final) {</span>
+                        <span class="s3">if </span><span class="s1">(prev[node].wide) {</span>
+                            <span class="s3">var </span><span class="s1">pn = jQuery.extend(</span><span class="s3">true</span><span class="s1">, {}, prev[node]);</span>
+                            <span class="s3">if </span><span class="s1">(pos.col &gt; prev[node].col) {</span>
+                                <span class="s1">pn.col = pos.col;</span>
+                            <span class="s1">}</span>
+                            <span class="s1">illustrator.draw.draw_connection(group, pn, pos, </span><span class="s3">null</span><span class="s1">, </span><span class="s3">null</span><span class="s1">, </span><span class="s3">true</span><span class="s1">);</span>
+                        <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                            <span class="s1">illustrator.draw.draw_connection(group, prev[node], pos, </span><span class="s3">null</span><span class="s1">, </span><span class="s3">null</span><span class="s1">, </span><span class="s3">true</span><span class="s1">);</span>
+                        <span class="s1">}</span>
+                    <span class="s1">}</span>
+                <span class="s1">}</span>
+            <span class="s1">} </span><span class="s3">else </span><span class="s1">{</span>
+                <span class="s3">for </span><span class="s1">(</span><span class="s3">let </span><span class="s1">node of prev) {</span>
+                    <span class="s3">if </span><span class="s1">(!node.final) {</span>
+                        <span class="s3">let </span><span class="s1">from = {</span>
+                            <span class="s1">row: node.row,</span>
+                            <span class="s1">col: node.col,</span>
+                            <span class="s1">final: node.final,</span>
+                            <span class="s1">wide: node.wide</span>
+                        <span class="s1">};</span>
+
+                        <span class="s3">let </span><span class="s1">to = {</span>
+                            <span class="s1">row: pos.row,</span>
+                            <span class="s1">col: pos.col,</span>
+                            <span class="s1">final: pos.final,</span>
+                            <span class="s1">wide: pos.wide</span>
+                        <span class="s1">};</span>
+
+                        <span class="s3">if </span><span class="s1">(to.col - from.col &gt; </span><span class="s5">1</span><span class="s1">) {</span>
+                            <span class="s1">from.col = to.col;</span>
+                        <span class="s1">}</span>
+
+                        <span class="s1">console.log(</span><span class="s4">&quot;🔗 正在画线 from:&quot;</span><span class="s1">, from, </span><span class="s4">&quot;to:&quot;</span><span class="s1">, to);</span>
+                        <span class="s1">illustrator.draw.draw_connection(group, from, to, </span><span class="s3">null</span><span class="s1">, </span><span class="s3">null</span><span class="s1">, </span><span class="s3">true</span><span class="s1">);</span>
+                    <span class="s1">}</span>
+                <span class="s1">}</span>
+            <span class="s1">}</span>
+        <span class="s1">}</span>
+        <span class="s0">// }}}</span>
+        <span class="s1">endnodes = endnodes.filter(e =&gt; </span><span class="s3">typeof </span><span class="s1">e === </span><span class="s4">'object' </span><span class="s1">&amp;&amp; </span><span class="s4">'row' </span><span class="s3">in </span><span class="s1">e &amp;&amp; </span><span class="s4">'col' </span><span class="s3">in </span><span class="s1">e);</span>
+        <span class="s3">return </span><span class="s1">[g, endnodes];</span>
+    <span class="s1">} </span><span class="s0">// }}}</span>
+    <span class="s0">//  }}}</span>
+
+    <span class="s0">//  Initialze {{{</span>
+    <span class="s1">adaptor = wf_adaptor;</span>
+    <span class="s1">illustrator = wf_illustrator;</span>
+    <span class="s0">// }}}</span>
+<span class="s1">} </span><span class="s0">// }}}</span>
+</pre>
+</body>
+</html>

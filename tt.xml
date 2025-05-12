@@ -1,0 +1,60 @@
+<description xmlns="http://cpee.org/ns/description/1.0">
+      <manipulate id="a3" label="">data.start = Time.now.to_f</manipulate>
+      <call id="a1" endpoint="subprocess">
+        <parameters>
+          <label>Create Sub</label>
+          <arguments>
+            <behavior>wait_running</behavior>
+            <url>https://cpee.org/hub/server/Templates.dir/Wait.xml</url>
+            <init>
+              <b>!rand(1..17)</b>
+            </init>
+            <endpoints/>
+            <attributes/>
+            <customization/>
+          </arguments>
+        </parameters>
+        <code>
+          <prepare/>
+          <finalize output="result">data.res = result
+data.substart = result['start'].to_f - data.start.to_f
+data.subend = result['end'].to_f - data.start.to_f
+data.duration = Time.now.to_f - data.start.to_f
+data.teams = result</finalize>
+          <update output="result"/>
+          <rescue output="result"/>
+        </code>
+        <annotations>
+          <_generic/>
+          <_timing>
+            <_timing_weight/>
+            <_timing_avg/>
+            <explanations/>
+          </_timing>
+          <_shifting>
+            <_shifting_type>Duration</_shifting_type>
+          </_shifting>
+          <_context_data_analysis>
+            <probes/>
+            <ips/>
+          </_context_data_analysis>
+          <report>
+            <url/>
+          </report>
+          <_notes>
+            <_notes_general/>
+          </_notes>
+        </annotations>
+        <documentation>
+          <input/>
+          <output/>
+          <implementation>
+            <description/>
+          </implementation>
+          <code>
+            <description/>
+          </code>
+        </documentation>
+      </call>
+      <stop id="a2"/>
+    </description>

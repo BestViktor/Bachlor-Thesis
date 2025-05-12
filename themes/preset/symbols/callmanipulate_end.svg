@@ -1,0 +1,7 @@
+<svg class="clickable" version="1.1" xmlns="http://www.w3.org/2000/svg">
+ <g class="replace" transform="translate(-18.668 0)" fill="none" stroke="#000">
+  <path class="cline hfill rfill stand" d="m0 28h6.332c2.216 0 4-1.784 4-4v-20c0-2.216-1.784-4-4-4h-6.332"/>
+ </g>
+ <rect class="cline rfill stand" x="4.332" y="20.5" width="12" height="12" rx="2" fill="none" stroke="#000"/>
+ <text class="small" x="10.332029" y="30.249998">s</text>
+</svg>
